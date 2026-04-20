@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wearable Demo</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="mobile-frame">
+
+  <!-- Screen 1: Start Workout -->
+  <div id="screen1" class="screen active">
+    <button id="startWorkoutBtn">Start Workout</button>
+  </div>
+
+  <!-- Screen 2: Select Activity -->
+  <div id="screen2" class="screen">
+    <h1>Pre-Workout</h1>
+    <h2>Diagnostic & Setup</h2>
+    <h1>Select Activity</h1>
+    <button class="activity-btn" data-activity="upper">Upper Body</button>
+    <button class="activity-btn" data-activity="lower">Lower Body</button>
+    <button class="activity-btn" data-activity="full">Full Body</button>
+    <button id="screen2Next">Next</button>
+  </div>
+
+  <!-- Screen 3: Sensor Setup -->
+  <div id="screen3" class="screen">
+    <h1>Pre-Workout</h1>
+    <h2>Diagnostic & Setup</h2>
+    <h1>Sensor Setup</h1>
+    <div class="box" id="placementBox">
+      <div id="placementText">placeholder</div>
+      <div class="placeholder">Animation placeholder: how to put on sensor</div>
+      <ul class="instructions">
+        <li class="bullet">Position sensors on the front of each thigh</li>
+        <li class="bullet">Secure bands snugly above the knee</li>
+        <li class="bullet">Ensure sensors are aligned horizontally</li>
+      </ul>
+      <button id="sensorsReadyBtn">Sensors Ready</button>
+    </div>
+
+    <!-- Pairing box hidden initially -->
+    <div class="box" id="pairBox" style="display:none;">
+      <h1>Pair Sensors</h1>
+      <ul class="instructions">
+        <li class="bullet">Turn on Bluetooth on your phone</li>
+        <li class="bullet">Ensure both sensors are turned on and fully charged</li>
+        <li class="bullet">Keep sensors close to your phone during pairing</li>
+      </ul>
+      
+      <button id="pairLeftBtn" style="margin-bottom: 10px;">Pair Left Sensor</button>
+      <button id="pairRightBtn">Pair Right Sensor</button>
+      
+      <div id="pairingStatus" style="margin-top: 15px; font-weight: bold;"></div>
+
+      <div id="bleDataDisplay" style="margin-top: 15px; font-size: 14px; color: #666; display: none; text-align: left;">
+        <div><strong>Left Sensor:</strong> <span id="leftGyroData">-</span></div>
+        <div><strong>Right Sensor:</strong> <span id="rightGyroData">-</span></div>
+      </div>
+    </div>
+
+    <div class="flex-row">
+      <button id="screen3Back">Back</button>
+      <button id="screen3Next" style="display:none;">Next</button>
+    </div>
+  </div>
+
+  <!-- Screen 4: HRV Measurement + Calibration -->
+  <div id="screen4" class="screen">
+    <h1>Pre-Workout</h1>
+    <h2>Diagnostic & Setup</h2>
+
+    <!-- HRV Measurement Box -->
+    <div class="box" id="hrvBox">
+      <h1>HRV Measurement</h1>
+      <div>Measure your readiness score</div>
+      <button id="startHRVBtn">Start Measurement</button>
+      <div id="hrvFinger" style="display:none;">
+        Place your finger on the sensor and keep still for 30s
+      </div>
+      <div id="fingerPlaceholder" class="placeholder" style="display:none;">
+        Animation placeholder: where to put finger
+      </div>
+      <div id="hrvCountdown" class="countdown" style="display:none;">30</div>
+      <div class="wave" id="hrvWave" style="display:none;">Wave placeholder: live heart rate data</div>
+      <div id="readinessResult" style="display:none;">
+        <h2>Today's readiness</h2>
+        <div id="readinessScore"></div>
+        <div id="readinessMessage"></div>
+      </div>
+    </div>
+
+    <!-- Sensor Calibration Box -->
+    <div class="box" id="calibrationBox" style="display:none;">
+      <h1>Sensor Calibration</h1>
+      <h2>Ensure your sensors track accurately</h2>
+      <button id="startCalibrationBtn">Calibrate Sensors</button>
+
+      <div id="calibrationCountdown" class="countdown" style="display:none;"></div>
+      <div id="calibrationText" style="text-align:center;margin:5px;"></div>
+      <div id="calibrationLoading" class="placeholder" style="display:none;">0%</div>
+      <div id="calibrationComplete" style="display:none;">Calibration complete<br>Sensors are ready to track your movement</div>
+    </div>
+
+    <button id="startWarmupBtn" style="display:none;margin-top:10px;">Start Warm-up</button>
+  </div>
+
+  <!-- Screen 5: Warm-up -->
+  <div id="screen5" class="screen">
+    <h1>Warm-up</h1>
+    <h2>Dynamic mobility flow</h2>
+    <div id="warmupProgressText">0 of 5 complete (0%)</div>
+    <div class="progress-container">
+      <div class="progress-bar" id="warmupProgressBar"></div>
+      
+    </div>
+    
+
+    <div class="box" id="exerciseBox">
+      <h3 id="exerciseName"></h3>
+      <div id="exerciseInstruction"></div>
+      <div class="placeholder" id="exerciseAnimation">Animation placeholder: how to do it</div>
+      <div id="waitingMotion">
+        Start moving, countdown will begin automatically.<br>
+        <div id="waitingMotion">
+            Waiting for movement<span id="waitingDots"></span>
+        </div>
+      </div>
+      <div id="exerciseCountdown" class="countdown">30</div>
+    </div>
+
+    <div class="box">
+      <h3>Remaining exercises</h3>
+      <div id="remainingExercises" class="remaining-exercises"></div>
+    </div>
+  </div>
+
+  <!-- Screen 6: Warm-up complete --><!--Starting automatically in 5...-->
+  <div id="screen6" class="screen">
+    <div class="box">
+      <h2>Warm-up complete!</h2>
+      <div>Your body is ready for training</div>
+      <button id="startWorkoutBtn2">Start workout</button>
+    </div>
+  </div>
+
+  <!-- Screen 7: Workout Overview -->
+  <div id="screen7" class="screen">
+    <h1 id="workoutName">Workout Name</h1>
+    <div id="workoutInfo" class="info">Duration • Exercises • Sets</div>
+
+    <!-- Focus Area Card -->
+    <div class="box focus-card">
+      <h2>Focus Area</h2>
+      <div id="focusArea">Focus area</div>
+      <p id="focusDescription">Description of the focus</p>
+    </div>
+
+    <!-- Exercises List -->
+    <h2>Exercises</h2>
+    <div id="exerciseList" class="exercise-list">
+      <!-- Exercise cards will be injected here dynamically -->
+    </div>
+
+    <button id="startWorkoutOverviewBtn">Start Workout</button>
+  </div>
+
+  <!-- Screen 8: Exercise Info -->
+  <div id="screen8" class="screen">
+
+    <!--Header-->
+    <h1>Workout</h1>
+    <h2 id="workoutType">Session</h2>
+
+    
+    <div class="progress-info">
+      <span id="exerciseCounter">Exercise 1 of 6</span>
+      <span id="setCounter">Set 1 of 3</span>
+    </div>
+
+    <div class="progress-container">
+      <div class="progress-bar" id="workoutProgressBar"></div>
+    </div>
+
+
+
+    <div class="box" id="exerciseCard">
+      <h3 id="exerciseName">Exercise Name</h3>
+      <div>Target Muscles:</div>
+      <div id="targetMuscles" class="muscle-tags">
+        <span class="muscle-tag">Muscle 1</span>
+        <span class="muscle-tag">Muscle 2</span>
+      </div>
+      <div class="placeholder" id="exerciseAnimation">Animation placeholder</div>
+
+      <div class="exercise-info-cards">
+        <div class="info-card">
+          <div class="big-number">3</div>
+          <div>Sets</div>
+        </div>
+        <div class="info-card">
+          <div class="big-number">10</div>
+          <div>Reps</div>
+        </div>
+        <div class="info-card">
+          <div class="big-number">20 kg</div>
+          <div>Weight</div>
+        </div>
+      </div>
+
+      <div class="exercise-buttons">
+        <button id="startExerciseBtn">Start Exercise</button>
+        <button id="skipExerciseBtn">Skip</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Screen 9: Set Countdown -->
+  <div id="screen9" class="screen">
+    <!--Header-->
+    <h1>Workout</h1>
+    <h2 id="workoutType">Session</h2>
+
+    
+    <div class="progress-info">
+      <span id="exerciseCounter">Exercise 1 of 6</span>
+      <span id="setCounter">Set 1 of 3</span>
+    </div>
+
+    <div class="progress-container">
+      <div class="progress-bar" id="workoutProgressBar"></div>
+    </div>
+
+
+
+    <h1 id="setCountdownTitle">Set 1</h1>
+    <div id="setCountdownInfo">10 reps x 20 kg</div>
+    <div class="countdown" id="setCountdown">3</div>
+    <div>Sensors active. Get in position and prepare for movement.</div>
+  </div>
+
+  <!-- Screen 10: Active Set -->
+  <div id="screen10" class="screen">
+    <!--Header-->
+    <h1>Workout</h1>
+    <h2 id="workoutType">Session</h2>
+
+    
+    <div class="progress-info">
+      <span id="exerciseCounter">Exercise 1 of 6</span>
+      <span id="setCounter">Set 1 of 3</span>
+    </div>
+
+    <div class="progress-container">
+      <div class="progress-bar" id="workoutProgressBar"></div>
+    </div>
+
+
+
+
+    <h1 id="activeExerciseName">Exercise Name</h1>
+
+    <div class="big-card">
+      <div>Rep Count</div>
+      <div class="big-number" id="repCount">0</div>
+      <div>of <span id="repTotal">10</span></div>
+    </div>
+
+    <div class="small-cards">
+      <div class="info-card">Symmetry: Good</div>
+      <div class="info-card">Tempo: Controlled</div>
+    </div>
+
+    <div class="notification-panel" id="notificationPanel">
+      Continue with controlled movements. Sensors are tracking your form.
+    </div>
+  </div>
+
+  <!-- Screen 11: Rest -->
+  <div id="screen11" class="screen">
+    <!--Header-->
+      <h1>Workout</h1>
+      <h2 id="workoutType">Session</h2>
+
+      
+      <div class="progress-info">
+        <span id="exerciseCounter">Exercise 1 of 6</span>
+        <span id="setCounter">Set 1 of 3</span>
+      </div>
+
+      <div class="progress-container">
+        <div class="progress-bar" id="workoutProgressBar"></div>
+      </div>
+
+
+    <div class="big-card">
+      <div>Rest Time</div>
+      <div class="countdown" id="restCountdown">60</div>
+      <button id="skipRestBtn">Skip Rest</button>
+    </div>
+
+    <div class="small-cards">
+      <div class="info-card">Symmetry: Good</div>
+      <div class="info-card">Tempo: Controlled</div>
+      <div class="info-card">Form warnings: 0</div>
+    </div>
+
+    <div class="tip-panel" id="restTip">
+      Tip: Focus on maintaining posture during next set to reduce form warnings.
+    </div>
+  </div>
+
+  <!-- Screen 12: Workout Complete -->
+<div id="screen12" class="screen">
+  <div class="box">
+    <h2>Workout complete!</h2>
+    <div>Great job today – now let's cool down</div>
+    <div id="cooldownStartText">Starting cooldown in <span id="cooldownCountdown">3</span></div>
+  </div>
+</div>
+
+<!-- Screen 13: Cooldown Stretches -->
+<div id="screen13" class="screen">
+  <h1>Cooldown</h1>
+  <h2>Stretching & recovery</h2>
+
+  <div id="cooldownProgressText">0 of 0 complete (0%)</div>
+  <div class="progress-container">
+    <div class="progress-bar" id="cooldownProgressBar"></div>
+  </div>
+
+  <div class="box" id="stretchBox">
+    <h3 id="stretchName"></h3>
+    <div id="stretchInstruction"></div>
+    <div class="placeholder" id="stretchAnimation">Animation placeholder: how to do it</div>
+    <div id="stretchCountdown" class="countdown" style="display:none;">30</div>
+    <button id="skipStretchBtn">Skip</button>
+  </div>
+
+  <div class="box">
+    <h3>Remaining stretches</h3>
+    <div id="remainingStretches" class="remaining-exercises"></div>
+  </div>
+</div>
+
+<!-- Screen 14: Recovery Check -->
+<div id="screen14" class="screen">
+  <h1>Post-Workout</h1>
+  <h2>Recovery Check</h2>
+
+  <div class="box" id="postHrvBox">
+    <h1>Recovery Check</h1>
+    <div>See how your body responded to the workout</div>
+    <button id="startPostHRVBtn">Start Measurement</button>
+
+    <div id="postHrvFinger" style="display:none;">
+      Place your finger on the sensor and keep still for 30s
+    </div>
+    <div id="postFingerPlaceholder" class="placeholder" style="display:none;">
+      Animation placeholder: where to put finger
+    </div>
+    <div id="postHrvCountdown" class="countdown" style="display:none;">30</div>
+    <div class="wave" id="postHrvWave" style="display:none;">Wave placeholder: live heart rate data</div>
+
+    <div id="recoveryResult" style="display:none;">
+      <h2>Today's recovery</h2>
+      <div id="recoveryScore"></div>
+      <div id="recoveryMessage"></div>
+      <div id="recoveryChange"></div>
+    </div>
+  </div>
+
+  <button id="viewSummaryBtn" style="display:none; margin-top:10px;">View Summary</button>
+</div>
+
+<!-- Screen 15: Workout Summary -->
+<div id="screen15" class="screen">
+  <!-- Header -->
+  <h1>Session Complete</h1>
+  <h2>Great work today!</h2>
+  <p id="summaryMotivation">You pushed through your workout!</p>
+
+  <!-- Workout Details Card -->
+  <div class="box summary-details-card">
+    <h3>Workout Details</h3>
+    <div class="details-grid">
+      <div class="detail-item">
+        <div class="detail-number" id="summaryDuration">40 min</div>
+        <div class="detail-label">Duration</div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-number" id="summaryExercises">6</div>
+        <div class="detail-label">Exercises</div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-number" id="summarySets">18</div>
+        <div class="detail-label">Sets</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Session Stats Card -->
+  <div class="box session-stats-card">
+    <h3>Session Stats</h3>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-number" id="statCalories">350 kcal</div>
+        <div class="stat-label">Calories Burned</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="statSymmetry">92%</div>
+        <div class="stat-label">Avg Symmetry</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="statForm">87%</div>
+        <div class="stat-label">Form Score</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="statTempo">90%</div>
+        <div class="stat-label">Tempo</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="statRecovery">Moderate Strain</div>
+        <div class="stat-label">Recovery Forecast</div>
+      </div>
+    </div>
+
+    <!-- Recovery Tips -->
+    <div class="recovery-tips">
+      <h4>Recovery Tips</h4>
+      <ul id="recoveryTipsList">
+        <li>Prioritize hydration and sleep today.</li>
+        <li>Include light mobility work tomorrow.</li>
+        <li>Avoid heavy lifts for the next 1–2 days.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Finish / CTA -->
+  <button id="finishWorkoutBtn">Finish</button>
+</div>
+
+
+
+
+
+
+
+
+
+
+</div>
+
+
+
+
+<!-- Presenter Menu -->
+<div id="presenterMenu">
+  
+  <img src="images/dev.png" id="presenterToggle" />
+
+  <div id="presenterPanel">
+    <div class="presenter-section">
+      <div class="presenter-title">Diagnostic</div>
+      <button onclick="showScreen(1)">Start</button>
+      <button onclick="showScreen(2)">Select Activity</button>
+      <button onclick="showScreen(3)">Sensor Setup</button>
+      <button onclick="showScreen(4)">HRV & Calibration</button>
+    </div>
+
+    <div class="presenter-section">
+      <div class="presenter-title">Warm-up</div>
+      <button onclick="showScreen(5)">Warm-up</button>
+      <button onclick="showScreen(6)">Warm-up Complete</button>
+    </div>
+
+    <div class="presenter-section">
+      <div class="presenter-title">Workout</div>
+      <button onclick="showScreen(7)">Workout Overview</button>
+      <button onclick="showScreen(8)">Exercise Info</button>
+      <button onclick="showScreen(9)">Set Countdown</button>
+      <button onclick="showScreen(10)">Active Set</button>
+      <button onclick="showScreen(11)">Rest</button>
+      <button onclick="showScreen(12)">Workout complete</button>
+      <!-- Add more workout screens here later -->
+    </div>
+
+    
+    <div class="presenter-section">
+      <div class="presenter-title">Post-workout</div>
+      <button onclick="showScreen(13)">Cooldown</button>
+      <button onclick="showScreen(14)">Recovery</button>
+      <button onclick="showScreen(15)">Summary</button>
+    </div>
+    
+  </div>
+</div>
+
+<script src="script.js"></script>
+
+</body>
+</html>
