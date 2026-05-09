@@ -131,8 +131,18 @@
 
   .activity-btn.selected {
     background-color: #999;
-    color: #fff; 
-}
+    color: #fff;
+  }
+
+  .activity-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  #screen2Next:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
 
 .screen {
   width: 390px;
@@ -163,6 +173,10 @@
   font-size:2em;
   margin-top:10px;
   display:none;
+}
+/* Pihenő: statikus szöveg mindig látható (.countdown alapból rejtett JS-sel felfedett órákhoz) */
+#restCountdown {
+  display: block;
 }
 .progress-container {
   margin:10px 0;
@@ -398,10 +412,8 @@
   margin-top:10px; 
 }
 #startExerciseBtn { 
-  flex:3; 
-}
-#skipExerciseBtn { 
-  flex:1; 
+  flex:1;
+  width:100%;
 }
 
 .big-card { 
@@ -462,15 +474,6 @@
   font-size: 2em;
   text-align: center;
   margin: 10px 0;
-}
-
-/* Exercise buttons layout on screen8 */
-.exercise-buttons button:first-child {
-  flex: 3;
-}
-
-.exercise-buttons button:last-child {
-  flex: 1;
 }
 
 #stretchWaitingDots::after {

@@ -19,10 +19,10 @@
     <h1>Pre-Workout</h1>
     <h2>Diagnostic & Setup</h2>
     <h1>Select Activity</h1>
-    <button class="activity-btn" data-activity="upper">Upper Body</button>
-    <button class="activity-btn" data-activity="lower">Lower Body</button>
-    <button class="activity-btn" data-activity="full">Full Body</button>
-    <button id="screen2Next">Next</button>
+    <button type="button" class="activity-btn" data-activity="upper">Upper Body</button>
+    <button type="button" class="activity-btn" data-activity="lower" disabled>Lower Body</button>
+    <button type="button" class="activity-btn" data-activity="full" disabled>Full Body</button>
+    <button type="button" id="screen2Next" disabled>Next</button>
   </div>
 
   <!-- Screen 3: Sensor Setup -->
@@ -84,7 +84,7 @@
         Animation placeholder: where to put finger
       </div>
       <div id="hrvCountdown" class="countdown" style="display:none;">30</div>
-      <div class="wave" id="hrvWave" style="display:none;">Wave placeholder: live heart rate data</div>
+      <div class="wave" id="hrvWave" style="display:none;">BPM: <span id="hrvLiveBpm">—</span></div>
       <div id="readinessResult" style="display:none;">
         <h2>Today's readiness</h2>
         <div id="readinessScore"></div>
@@ -212,7 +212,6 @@
 
       <div class="exercise-buttons">
         <button id="startExerciseBtn">Start Exercise</button>
-        <button id="skipExerciseBtn">Skip</button>
       </div>
     </div>
   </div>
@@ -362,13 +361,12 @@
       Animation placeholder: where to put finger
     </div>
     <div id="postHrvCountdown" class="countdown" style="display:none;">30</div>
-    <div class="wave" id="postHrvWave" style="display:none;">Wave placeholder: live heart rate data</div>
+    <div class="wave" id="postHrvWave" style="display:none;">BPM: <span id="postHrvLiveBpm">—</span></div>
 
     <div id="recoveryResult" style="display:none;">
       <h2>Today's recovery</h2>
       <div id="recoveryScore"></div>
       <div id="recoveryMessage"></div>
-      <div id="recoveryChange"></div>
     </div>
   </div>
 

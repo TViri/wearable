@@ -15,7 +15,7 @@ Az alkalmazás egy **workout flow demó**: több teljes képernyős lépésben v
 | Bal   | Gyroszkóp szögek (pitch/roll), BPM, HRV | Igen, karakterisztikán írva |
 | Jobb  | Gyroszkóp szögek | Igen, külön |
 
-**Jelenlegi implementáció:** mindkét oldal ugyanazzal a BLE UUID párossal és **azonos CSV formátummal** van kezelve; az érkező értékek **memóriában frissülnek**, de a workout képernyők **nem kötik** őket megjelenítéshez vagy logikához.
+**Jelenlegi implementáció:** mindkét oldal **ugyanazzal** a BLE UUID párossal van kezelve; a CSV **mezőszáma eltér** (bal: 4 mező, jobb: 2 — lásd 5.3). Az érkező értékek **memóriában frissülnek**. A **screen 4** és **screen 14** HRV mérési blokkok a bal szenzor **BPM / HRV** értékeit használják; a többi workout képernyő továbbra sincs IMU/BPM alapon bekötve.
 
 ---
 
@@ -36,6 +36,8 @@ Az alkalmazás egy **workout flow demó**: több teljes képernyős lépésben v
 - `style.css` — megjelenés
 - `images/dev.png` — presenter menü ikon
 
+**Firmware referencia (ne módosítsd a repo-ban):** a `leftSensor.ino` és `rightSensor.ino` fájlok **csak kontextusnak** vannak a mappában — a tényleges ESP-kre már fel vannak írva. Ezeknek a tartalmát **nem célszerű** itt változtatni (duplikáció / eltérések elkerülése); ha firmware-t frissítesz, azt az Arduino projektben / az eszközön kezeld, és igazítsd hozzá a webes protokollt.
+
 ---
 
 ## 3. Képernyőtérkép (workout flow)
@@ -43,16 +45,16 @@ Az alkalmazás egy **workout flow demó**: több teljes képernyős lépésben v
 | # | DOM id | Szerep (üzleti jelentés) |
 |---|--------|---------------------------|
 | 1 | `screen1` | Start — belépés a flow-ba |
-| 2 | `screen2` | Aktivitás választás: Upper / Lower / Full (`data-activity`) |
+| 2 | `screen2` | Aktivitás választás: Upper / Lower / Full látható; **választható csak Upper Body** (Lower/Full `disabled`). **Next** csak ha van kiválasztott aktivitás (`#screen2Next` `disabled` amíg üres `selectedActivity`). |
 | 3 | `screen3` | Sensor setup: felhelyezési szöveg + Pair Left / Pair Right (BLE) |
 | 4 | `screen4` | Pre-workout HRV mérés (UI) + kalibráció (UI) → warm-up indítás |
-| 5 | `screen5` | Warm-up: 5 gyakorlat, progress, „motion detect” + számláló |
+| 5 | `screen5` | Warm-up UI (5 gyakorlat listája); **demo:** csak az 1. gyakorlat fut le, utána minden tile kész (zöld) → screen 6 |
 | 6 | `screen6` | Warm-up kész → workout overview |
 | 7 | `screen7` | Workout overview: név, focus, gyakorlatlista (`renderWorkoutOverview`) |
-| 8 | `screen8` | Gyakorlat infó: izmok, sets/reps/súly, Start / Skip |
+| 8 | `screen8` | Gyakorlat infó: izmok, sets/reps/súly; csak **Start Exercise** → screen 9 (nincs gyakorlat-kihagyás) |
 | 9 | `screen9` | Set előtti visszaszámláló (3 mp) |
-| 10 | `screen10` | Aktív szett: rep számláló (demo) |
-| 11 | `screen11` | Pihenő (60 mp vagy Skip) |
+| 10 | `screen10` | Aktív szett: rep számláló bal `roll` (−30 / −10) |
+| 11 | `screen11` | Pihenő — statikus „60” szám megjelenítés (`#restCountdown`); **Skip Rest** → közvetlenül **screen 12** (workout complete), nincs újabb szett/gyakorlat |
 | 12 | `screen12` | Workout complete → auto cooldown countdown (3 mp) |
 | 13 | `screen13` | Cooldown nyújtások aktivitás szerinti listával |
 | 14 | `screen14` | Post-workout recovery check (HRV UI) |
@@ -70,9 +72,12 @@ Megjegyzés: az `index.html`-ben a kommentek részben angolul írják le a szekc
 | `selectedActivity` | `'upper' \| 'lower' \| 'full'` — workout és cooldown lista kulcsa |
 | `currentExerciseIndex`, `currentSetIndex` | Workout progress |
 | `currentWarmup` | Warm-up gyakorlat index |
+| `warmupWaitingForRoll` | Screen 5: warm-up számláló csak `leftSensorData.roll < 30` után indul (bal BLE minták alapján) |
 | `currentStretchIndex` | Cooldown stretch index |
-| `preWorkoutHRV` | Screen 4 „eredmény” száma; screen 14 összehasonlításhoz |
+| `preWorkoutHRV` | Screen 4 mért **HRV (ms, firmware RMSSD-jellegű simított érték)** |
+| `postWorkoutHRV` | Screen 14 mért **HRV (ms)** — sikeres post-workout mérés után (`leftSensorData.hrv`), screen 15 felé jelenleg nem köttetve |
 | `leftSensorData`, `rightSensorData` | BLE-ből frissített objektumok |
+| `activeSetRepRafId` | Screen 10 rep követés `requestAnimationFrame`-mel; küszöbök: `ACTIVE_SET_REP_ROLL_DEEP` (−30), `ACTIVE_SET_REP_ROLL_RECOVER` (−10) |
 | `leftConnected`, `rightConnected` | Párosítás állapot |
 
 Ha `selectedActivity` üres marad (pl. presenter menüből screen 7-re ugrás Next nélkül), `workouts[activity]` **undefined** lesz — ez runtime hiba lehetőség.
@@ -93,13 +98,12 @@ Ha `selectedActivity` üres marad (pl. presenter menüből screen 7-re ugrás Ne
 
 ### 5.3 Bejövő adatformátum
 
-`characteristicvaluechanged`: UTF-8 szöveg, **vesszővel elválasztott 4 szám**:
+`characteristicvaluechanged`: UTF-8 szöveg, vesszővel elválasztott számok.
 
-```text
-pitch, roll, bpm, hrv
-```
+- **Bal ESP (AS-IS firmware):** négy mező — `pitch, roll, bpm, hrv`.
+- **Jobb ESP (AS-IS firmware):** két mező — `pitch, roll` (nincs pulzus szenzor; BPM/HRV nem küldött).
 
-Mind a bal, mind a jobb oldali ág **ugyanígy** parse-ol (`parseFloat`). Ha a jobb ESP csak gyrot küld, a firmware-nek valószínűleg **placeholder** BPM/HRV értékeket kell küldenie, vagy a protokollt később szét kell választani oldal szerint.
+A `script.js` mindkét formát elfogadja: `length >= 4` esetén mind a négy mezőt tölti; **két mezőnél** BPM és HRV **0** marad a memóriában. Korábbi hiba volt a csak `length === 4` feltétel — ettől a jobb oldali gyro adatok nem frissültek.
 
 ### 5.4 Kimeneti / rezgés
 
@@ -135,26 +139,25 @@ Aktivitáshoz kötött listák (`full` / `lower` / `upper`), eltérő hosszal.
 
 ---
 
-## 7. Workout állapotgép (egyszerűsített)
+## 7. Workout állapotgép (lineáris demó)
 
 ```
 screen7 → Start → screen8 (renderExerciseInfo)
-screen8 → Start Exercise → screen9 (renderSetCountdown: 3…1)
-screen9 → screen10 (renderActiveSet)
-screen10 → reps done → screen11 (renderRest)
-screen11 → timer vége / Skip → advanceSet()
-  → ha van következő szett: screen9
-  → ha gyakorlat vége: screen8 + következő gyakorlat
-  → ha workout vége: screen12
-screen8 Skip exercise → következő gyakorlat vagy screen12
+screen8 → Start Exercise → screen9 (renderSetCountdown: 3…1, showScreen(9) a countdown elején)
+screen9 → automatikusan screen10 (renderActiveSet), ha lejárt a visszaszámláló
+screen10 → célreps elérve (`leftSensorData.roll` küszöbök) → screen11 (renderRest)
+screen11 → Skip Rest → window.showScreen(12) (workout complete + cooldown előtti 3 mp)
 ```
+
+**Megjegyzés:** nincs többszörös szett / több gyakorlat loop a flow-ban — egy „Exercise info → countdown → aktív szett → pihenő → complete” útvonal.
 
 **Demo jellegű részek:**
 
-- **Repszámlálás (`renderActiveSet`):** fix `setInterval` ~1 mp-enként növeli a rep-et, nem IMU alapú.
-- **Warm-up „motion detection”:** fix 3 mp `setTimeout`, utána countdown; a countdown intervalluma `1000/6` (gyorsított demo).
-- **Screen 4 HRV:** fix `score = 75`, időzítés és szöveg sablon; nem `leftSensorData.hrv`.
-- **Screen 14 recovery:** fix `postScore = 68`, összevetés `preWorkoutHRV`-val.
+- **Repszámlálás (`renderActiveSet`):** bal `leftSensorData.roll` — előbb −30 alá, majd −10 felé vissza (`roll ≥ -10`), egy rep; `requestAnimationFrame` követés; presenter / másik képernyő → `stopActiveSetRepTracking`.
+- **Warm-up „motion detection”:** a countdown akkor indul, ha a **bal** szenzor BLE-jén érkező `leftSensorData.roll` érvényes és **30-nál kisebb** (minden gyakorlat előtt újra vár erre); a countdown intervalluma `1000/6` (gyorsított demo).
+- **Warm-up demo rövidítés:** az első gyakorlat (**Arm Circles**) számlálója után az összes warm-up tile **completed** (zöld), progress **100%**, ~700 ms múlva **screen 6** (nem futnak le a 2–5. gyakorlatok).
+- **Screen 4 HRV:** 30 mp valós visszaszámlálás (1 mp lépés); közben `#hrvLiveBpm` frissül `leftSensorData.bpm`-mel (~200 ms); a végén `preWorkoutHRV` és a kiírt érték `leftSensorData.hrv` (ms). Readiness szöveg **HRV ms** küszöbökkel (40 / 20 / 10); a **Start Measurement** gomb minden mérés után újra kattintható (ismételt mérés).
+- **Screen 14 recovery:** ugyanaz a **30 mp / 1 mp** HRV mérési blokk mint screen 4-en (élő BPM ~200 ms); a végeredmény szöveg és `HRV: … ms` a **`getReadinessDisplayFromHrvMs`** logikával egyezik (screen 4-gyel közös küszöbök); nincs előző értékhez viszonyított „strain” összehasonlítás. A **`#startPostHRVBtn` Start Measurement** minden mérés után újra kattintható (ismétlés); csak érvényes (`!invalid`) mérésnél frissül `postWorkoutHRV`.
 - **Kalibráció:** százalék animáció fix lépésekkel, nem szenzor.
 
 ---
@@ -187,6 +190,7 @@ Hatások:
 
 ## 10. HTML / DOM megjegyzések (technikai adósság)
 
+- **`.countdown`:** globálisan `display: none` (HRV / stretch / set countdown JS-sel kap `display: block`-ot). Kivétel: `#restCountdown` CSS-ben látható — pihenő statikus „60” szám.
 - **Duplikált `id`-k** több screenen (`workoutType`, `exerciseCounter`, `setCounter`, `workoutProgressBar`, `exerciseName`, `exerciseAnimation`). Ez invalid HTML5; a script részben `#screen8 #exerciseName` jellegű szűréssel, részben `querySelectorAll`-lal kezeli.
 - **Beágyazott duplikált `id`:** `screen5`-ben két `#waitingMotion` blokk (belső és külső) — karbantartásnál zavaró lehet.
 - **`startWorkoutBtn`** kétszer: screen1 és screen6 (`startWorkoutBtn2` a folytatásra).
@@ -207,10 +211,10 @@ Hatások:
 | Statikus képernyők és navigáció | Megvan (fő útvonal + presenter) |
 | Aktivitás szerinti szöveg / lista | `selectedActivity` + `workouts` / `stretches` |
 | BLE párosítás + notify + write buzz | Megvan |
-| Élő szenzoradat a UI-ban és a workout logikában | **Nincs** (csak `left/rightSensorData` memória) |
-| Bal/jobb protokoll különbség (csak gyro jobb) | **Nincs** külön ág |
-| HRV / readiness / recovery számítás | **Placeholder** fix értékek |
-| Rep counting / forma / symmetry | **Statikus vagy demo** szöveg |
+| Élő szenzoradat a UI-ban és a workout logikában | Screen 4 és screen 14 HRV blokk: BPM + HRV **van**; screen 5 warm-up indulás: bal **roll** küszöb **van**; screen 10 aktív szett: bal **roll** reps **van**; egyéb workout képernyők: **nincs** |
+| Bal/jobb protokoll különbség (jobb: csak gyro CSV) | Parse: 4 vs 2 mező (`script.js`) |
+| HRV / readiness / recovery számítás | Screen 4 és screen 14: firmware **HRV ms**, ugyanaz a readiness szövegblokk; recovery UI statikus címekkel |
+| Rep counting / forma / symmetry | Screen 10: roll küszöbök (−30 / −10); egyéb: statikus / demo szöveg |
 
 ---
 
@@ -219,9 +223,9 @@ Hatások:
 1. **Characteristic referenciák** tárolása (`leftWriteChar`, `rightWriteChar`) + közös `vibrateSide('left'|'right')`.
 2. **UI binding:** `#leftGyroData` / `#rightGyroData` vagy dedikált workout sorok — throttle-lal frissítve.
 3. **Rep / motion:** `renderActiveSet` és warm-up helyett IMU pipeline (küszöbök, aktivitás-specifikus modell).
-4. **HRV:** `leftSensorData.bpm` / `hrv` bekötése screen 4 és 14 időzítőibe (és természetesen firmware egyeztetés).
+4. **HRV:** Screen 4 és screen 14 kész (`bpm` / `hrv`, 30 s); opcionálisan **pre vs post** összehasonlítás / strain narratíva külön szabályokkal.
 5. **`selectedActivity` védelem:** presenter ugrásnál default vagy guard.
 
 ---
 
-*Utolsó frissítés a dokumentáció szempontjából: a táblázatok és viselkedés a repo aktuális `index.html` és `script.js` alapján készült.*
+*Utolsó frissítés (2026-05-09): Screen 4 és screen 14 — **Start Measurement** minden 30 s-os HRV mérés után újra engedélyezve (ismétlés); screen 14-en `postWorkoutHRV` csak sikeres olvasásnál változik. Screen 10 Active Set — reps `leftSensorData.roll`: egy számolt rep ha előbb `roll < -30`, utána `roll ≥ -10`; RAF követés, másik képernyőre váltáskor leáll. Workout flow lineáris — screen8-on nincs Skip; screen11 Skip Rest → screen12; nincs szett/gyakorlat `advanceSet` loop. Screen 2 — csak Upper Body választható (Lower/Full `disabled`); Next csak kiválasztott aktivitás után. Screen 5 warm-up demo — első gyakorlat után minden tile zöld → screen 6; countdown indulás `leftSensorData.roll < 30` (bal BLE). Screen 4 és screen 14 HRV — 30 s countdown, élő BPM, eredmény `leftSensorData.hrv` (ms), közös readiness szöveg (`getReadinessDisplayFromHrvMs`).*
