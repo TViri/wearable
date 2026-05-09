@@ -1,0 +1,24 @@
+---
+description: AS-IS docs workflow — read before changes, update after
+alwaysApply: true
+---
+
+# Wearable — AS-IS dokumentáció (`docs/AS-IS.md`)
+
+## Előtte (minden fejlesztési feladat megkezdése előtt)
+
+1. Olvasd át a teljes [`docs/AS-IS.md`](docs/AS-IS.md) fájlt (vagy legalább az érintett szekciókat: képernyőtérkép, BLE, állapotgép, presenter, technikai adósság).
+2. A változtatást ehhez az állapothoz viszonyítsd: ne feltételezd régi viselkedést, ha a dokumentum mást mond.
+
+## Utána (amikor a fejlesztés kész és a kód stabil)
+
+Frissítsd `docs/AS-IS.md` **azon részeit**, amiket a változtatás érint:
+
+- Új képernyő, átnevezett DOM id, új gomb / flow → képernyőtérkép és állapotváltozók.
+- BLE protokoll, UUID, adatformátum, rezgés → BLE szekció.
+- Új vagy eltűnt demo/placeholder viselkedés → „Demo” / „Összefoglaló” táblázat.
+- Presenter menü, globális API (`showScreen`, stb.) → megfelelő szekció.
+- Új fájlok, build, függőség → technikai összefoglaló.
+- Ha egy korábbi „nincs kész” elem elkészült, vedd ki vagy módosítsd a listában.
+
+Ha csak elírás vagy komment volt a kódban és az üzleti/architektúra AS-IS állapota nem változott, elég egy rövid megjegyzés a dokumentumban vagy egy sor „Utolsó frissítés” frissítése — ne hagyd következetlenül a dokumentumot a kódhoz képest.
