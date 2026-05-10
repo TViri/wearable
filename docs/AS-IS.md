@@ -53,7 +53,7 @@ Az alkalmazás egy **workout flow demó**: több teljes képernyős lépésben v
 | 7 | `screen7` | Workout overview: név, focus, gyakorlatlista (`renderWorkoutOverview`) |
 | 8 | `screen8` | Gyakorlat infó: izmok, sets/reps/súly; csak **Start Exercise** → screen 9 (nincs gyakorlat-kihagyás) |
 | 9 | `screen9` | Set előtti visszaszámláló (3 mp) |
-| 10 | `screen10` | Aktív szett: rep számláló bal `roll` (−30 / −10) |
+| 10 | `screen10` | Aktív szett: rep számláló bal `roll` (−30 / −10) + symmetry/tempo fault pause + automatikus `Continue set in` countdown |
 | 11 | `screen11` | Pihenő — statikus „60” szám megjelenítés (`#restCountdown`); **Skip Rest** → közvetlenül **screen 12** (workout complete), nincs újabb szett/gyakorlat |
 | 12 | `screen12` | Workout complete → auto cooldown countdown (3 mp) |
 | 13 | `screen13` | Cooldown nyújtások aktivitás szerinti listával |
@@ -77,8 +77,9 @@ Megjegyzés: az `index.html`-ben a kommentek részben angolul írják le a szekc
 | `preWorkoutHRV` | Screen 4 mért **HRV (ms, firmware RMSSD-jellegű simított érték)** |
 | `postWorkoutHRV` | Screen 14 mért **HRV (ms)** — sikeres post-workout mérés után (`leftSensorData.hrv`), screen 15 felé jelenleg nem köttetve |
 | `leftSensorData`, `rightSensorData` | BLE-ből frissített objektumok |
-| `activeSetRepRafId` | Screen 10 rep követés `requestAnimationFrame`-mel; küszöbök: `ACTIVE_SET_REP_ROLL_DEEP` (−30), `ACTIVE_SET_REP_ROLL_RECOVER` (−10) |
+| `activeSetRepRafId` | Screen 10 aktív szett loop `requestAnimationFrame`-mel |
 | `leftConnected`, `rightConnected` | Párosítás állapot |
+| `leftBleWriteCharacteristic`, `rightBleWriteCharacteristic` | Bal/jobb BLE write handle (motor vezérléshez) |
 
 Ha `selectedActivity` üres marad (pl. presenter menüből screen 7-re ugrás Next nélkül), `workouts[activity]` **undefined** lesz — ez runtime hiba lehetőség.
 
@@ -107,12 +108,13 @@ A `script.js` mindkét formát elfogadja: `length >= 4` esetén mind a négy mez
 
 ### 5.4 Kimeneti / rezgés
 
-`buzzESP(characteristic)`:
+Motor vezérlés webes mintákkal történik (`'1'` / `'0'` write), firmware oldalon nincs külön pattern parancs.
 
-- `TextEncoder` → `'1'` write
-- 500 ms után `'0'` write
-
-**Nincs** külön „csak bal” / „csak jobb” hívás a flow-ból — csak párosításkor fut le egyszer oldalanként. Külön rezgetéshez a két characteristic referenciát érdemes tárolni (jelenleg nincs globálisan elmentve).
+- `buzzESP(characteristic)` párosításkor egy hosszú impulzust küld (sikerjelzés).
+- `vibrateSideLong('left'|'right')` csak a választott oldalt rezegteti (symmetry hiba).
+- `vibrateBothLong(1)` mindkét oldalon 1 hosszú impulzus (tempo 10–40% eltérés).
+- `vibrateBothLong(2)` mindkét oldalon 2 hosszú impulzus (tempo >40% eltérés).
+- A script oldali timing konstansok vezérlik a hosszú impulzus és a köztük lévő szünet idejét.
 
 ### 5.5 UI és BLE
 
@@ -145,6 +147,8 @@ Aktivitáshoz kötött listák (`full` / `lower` / `upper`), eltérő hosszal.
 screen7 → Start → screen8 (renderExerciseInfo)
 screen8 → Start Exercise → screen9 (renderSetCountdown: 3…1, showScreen(9) a countdown elején)
 screen9 → automatikusan screen10 (renderActiveSet), ha lejárt a visszaszámláló
+screen10 (measuring) → symmetry/tempo fault esetén pause + `Continue set in 5..1` countdown
+screen10 (resume gate: `|left.roll| < 30 && |right.roll| < 30`) → measuring folytatás
 screen10 → célreps elérve (`leftSensorData.roll` küszöbök) → screen11 (renderRest)
 screen11 → Skip Rest → window.showScreen(12) (workout complete + cooldown előtti 3 mp)
 ```
@@ -153,8 +157,11 @@ screen11 → Skip Rest → window.showScreen(12) (workout complete + cooldown el
 
 **Demo jellegű részek:**
 
-- **Repszámlálás (`renderActiveSet`):** bal `leftSensorData.roll` — előbb −30 alá, majd −10 felé vissza (`roll ≥ -10`), egy rep; `requestAnimationFrame` követés; presenter / másik képernyő → `stopActiveSetRepTracking`.
-- **Warm-up „motion detection”:** a countdown akkor indul, ha a **bal** szenzor BLE-jén érkező `leftSensorData.roll` érvényes és **30-nál kisebb** (minden gyakorlat előtt újra vár erre); a countdown intervalluma `1000/6` (gyorsított demo).
+- **Repszámlálás (`renderActiveSet`):** bal `leftSensorData.roll` — előbb −30 alá, majd −10 felé vissza (`roll ≥ -10`), egy rep; `requestAnimationFrame` loop.
+- **Symmetry fault:** ha `Math.abs(left.roll - right.roll) > 10`, a magasabb roll oldal rezeg, a Symmetry card piros (`Symmetry: Level left/right arm`), a notification panel hibaüzenetet mutat; mérés pause.
+- **Tempo fault:** első két inter-rep időkülönbség baseline átlagot ad; a 3. összehasonlított gap-től `pctDeviation = |gap-baseline|/baseline*100`. `<10%`: `Tempo: Stable`; `10–40%`: `Tempo: Inconsistent` + narancs + mindkét oldal 1 hosszú rezgés + pause; `>40%`: `Tempo: Fatigued` + piros + mindkét oldal 2 hosszú rezgés + pause.
+- **Pause / resume:** fault alatt se rep, se új fault-ellenőrzés nem fut. Hiba után automatikus `Continue set in 5..1` visszaszámlálás fut; a végén mindkét oldal röviden rezeg (folytatásjel). A mérés csak akkor folytatódik, ha mindkét oldal `|roll| < 30`; a pause ideje nem számít bele a tempo időkbe.
+- **Warm-up „motion detection”:** a countdown akkor indul, ha a **bal** szenzor BLE-jén érkező `leftSensorData.roll` érvényes és **30-nál kisebb** (minden gyakorlat előtt újra vár erre); a visszaszámláló lépésenként `WARMUP_COUNTDOWN_STEP_MS` (30 számjegy ≈ 15 mp összesen).
 - **Warm-up demo rövidítés:** az első gyakorlat (**Arm Circles**) számlálója után az összes warm-up tile **completed** (zöld), progress **100%**, ~700 ms múlva **screen 6** (nem futnak le a 2–5. gyakorlatok).
 - **Screen 4 HRV:** 30 mp valós visszaszámlálás (1 mp lépés); közben `#hrvLiveBpm` frissül `leftSensorData.bpm`-mel (~200 ms); a végén `preWorkoutHRV` és a kiírt érték `leftSensorData.hrv` (ms). Readiness szöveg **HRV ms** küszöbökkel (40 / 20 / 10); a **Start Measurement** gomb minden mérés után újra kattintható (ismételt mérés).
 - **Screen 14 recovery:** ugyanaz a **30 mp / 1 mp** HRV mérési blokk mint screen 4-en (élő BPM ~200 ms); a végeredmény szöveg és `HRV: … ms` a **`getReadinessDisplayFromHrvMs`** logikával egyezik (screen 4-gyel közös küszöbök); nincs előző értékhez viszonyított „strain” összehasonlítás. A **`#startPostHRVBtn` Start Measurement** minden mérés után újra kattintható (ismétlés); csak érvényes (`!invalid`) mérésnél frissül `postWorkoutHRV`.
@@ -210,22 +217,21 @@ Hatások:
 |---------|--------|
 | Statikus képernyők és navigáció | Megvan (fő útvonal + presenter) |
 | Aktivitás szerinti szöveg / lista | `selectedActivity` + `workouts` / `stretches` |
-| BLE párosítás + notify + write buzz | Megvan |
-| Élő szenzoradat a UI-ban és a workout logikában | Screen 4 és screen 14 HRV blokk: BPM + HRV **van**; screen 5 warm-up indulás: bal **roll** küszöb **van**; screen 10 aktív szett: bal **roll** reps **van**; egyéb workout képernyők: **nincs** |
+| BLE párosítás + notify + write buzz | Megvan (oldalspecifikus és kétoldali motor pattern hívásokkal is) |
+| Élő szenzoradat a UI-ban és a workout logikában | Screen 4 és screen 14 HRV blokk: BPM + HRV **van**; screen 5 warm-up indulás: bal **roll** küszöb **van**; screen 10 aktív szett: bal **roll** reps + symmetry/tempo fault pause **van**; egyéb workout képernyők: **nincs** |
 | Bal/jobb protokoll különbség (jobb: csak gyro CSV) | Parse: 4 vs 2 mező (`script.js`) |
 | HRV / readiness / recovery számítás | Screen 4 és screen 14: firmware **HRV ms**, ugyanaz a readiness szövegblokk; recovery UI statikus címekkel |
-| Rep counting / forma / symmetry | Screen 10: roll küszöbök (−30 / −10); egyéb: statikus / demo szöveg |
+| Rep counting / forma / symmetry | Screen 10: roll küszöbök (−30 / −10), symmetry diff fault, tempo baseline+eltérés fault, auto continue countdown + neutral resume gate |
 
 ---
 
 ## 13. Javasolt következő integrációs pontok (referencia, nem követelmény)
 
-1. **Characteristic referenciák** tárolása (`leftWriteChar`, `rightWriteChar`) + közös `vibrateSide('left'|'right')`.
-2. **UI binding:** `#leftGyroData` / `#rightGyroData` vagy dedikált workout sorok — throttle-lal frissítve.
-3. **Rep / motion:** `renderActiveSet` és warm-up helyett IMU pipeline (küszöbök, aktivitás-specifikus modell).
-4. **HRV:** Screen 4 és screen 14 kész (`bpm` / `hrv`, 30 s); opcionálisan **pre vs post** összehasonlítás / strain narratíva külön szabályokkal.
-5. **`selectedActivity` védelem:** presenter ugrásnál default vagy guard.
+1. **UI binding:** `#leftGyroData` / `#rightGyroData` vagy dedikált workout sorok — throttle-lal frissítve.
+2. **Rep / motion:** `renderActiveSet` és warm-up helyett IMU pipeline (küszöbök, aktivitás-specifikus modell).
+3. **HRV:** Screen 4 és screen 14 kész (`bpm` / `hrv`, 30 s); opcionálisan **pre vs post** összehasonlítás / strain narratíva külön szabályokkal.
+4. **`selectedActivity` védelem:** presenter ugrásnál default vagy guard.
 
 ---
 
-*Utolsó frissítés (2026-05-09): Screen 4 és screen 14 — **Start Measurement** minden 30 s-os HRV mérés után újra engedélyezve (ismétlés); screen 14-en `postWorkoutHRV` csak sikeres olvasásnál változik. Screen 10 Active Set — reps `leftSensorData.roll`: egy számolt rep ha előbb `roll < -30`, utána `roll ≥ -10`; RAF követés, másik képernyőre váltáskor leáll. Workout flow lineáris — screen8-on nincs Skip; screen11 Skip Rest → screen12; nincs szett/gyakorlat `advanceSet` loop. Screen 2 — csak Upper Body választható (Lower/Full `disabled`); Next csak kiválasztott aktivitás után. Screen 5 warm-up demo — első gyakorlat után minden tile zöld → screen 6; countdown indulás `leftSensorData.roll < 30` (bal BLE). Screen 4 és screen 14 HRV — 30 s countdown, élő BPM, eredmény `leftSensorData.hrv` (ms), közös readiness szöveg (`getReadinessDisplayFromHrvMs`).*
+*Utolsó frissítés (2026-05-10): Screen 5 warm-up visszaszámláló lépésideje `WARMUP_COUNTDOWN_STEP_MS` — 30→0 megjelenítés összesen ~15 mp. Screen 10 Active Set kibővítve symmetry + tempo fault logikával. Symmetry: `|left.roll-right.roll| > ACTIVE_SET_SYMMETRY_DIFF_THRESHOLD` esetén a magasabb roll oldal rezeg, piros kártya/üzenet, majd pause. Tempo: az első két inter-rep interval baseline, ezután `<10%` stable, `10–40%` inconsistent (narancs + 1 hosszú rezgés mindkét oldalon), `>40%` fatigued (piros + 2 hosszú rezgés mindkét oldalon), faultnál pause. Hiba után automatikus `Continue set in 5..1` countdown fut, majd mindkét eszköz egy rövid rezgéssel jelzi a folytatási lehetőséget; a valódi mérés csak `|left.roll| < 30 && |right.roll| < 30` feltételnél indul újra. A pause-idő nem számít tempo gap-be. BLE oldalon bal/jobb write characteristic globálisan tárolva; oldalspecifikus és kétoldali rezgés pattern API használatban.*

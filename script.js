@@ -77,25 +77,73 @@
 
   let leftConnected = false;
   let rightConnected = false;
+  let leftBleWriteCharacteristic = null;
+  let rightBleWriteCharacteristic = null;
+  const motorCommandEncoder = new TextEncoder();
+  const MOTOR_LONG_PULSE_MS = 550;
+  const MOTOR_SHORT_PULSE_MS = 220;
+  const MOTOR_PULSE_GAP_MS = 180;
 
   // Itt tároljuk az éles adatokat külön változókban
   let leftSensorData = { pitch: 0, roll: 0, bpm: 0, hrv: 0 };
   let rightSensorData = { pitch: 0, roll: 0, bpm: 0, hrv: 0 };
 
-  async function buzzESP(characteristic) {
+  function waitMs(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  async function writeMotorCommand(characteristic, value) {
+    if (!characteristic) return;
     try {
-        const encoder = new TextEncoder();
-        // Bekapcsolás (küldünk egy '1'-est)
-        await characteristic.writeValue(encoder.encode('1'));
-        
-        // Fél másodperc múlva kikapcsoljuk (küldünk egy '0'-ást)
-        setTimeout(async () => {
-            await characteristic.writeValue(encoder.encode('0'));
-        }, 500);
+      await characteristic.writeValue(motorCommandEncoder.encode(value));
     } catch (error) {
-        console.error("Hiba a rezgetésnél:", error);
+      console.error("Hiba a rezgetésnél:", error);
     }
   }
+
+  async function motorOn(characteristic) {
+    await writeMotorCommand(characteristic, '1');
+  }
+
+  async function motorOff(characteristic) {
+    await writeMotorCommand(characteristic, '0');
+  }
+
+  async function pulseLong(characteristic, durationMs = MOTOR_LONG_PULSE_MS) {
+    if (!characteristic) return;
+    await motorOn(characteristic);
+    await waitMs(durationMs);
+    await motorOff(characteristic);
+  }
+
+  async function buzzESP(characteristic) {
+    await pulseLong(characteristic, MOTOR_LONG_PULSE_MS);
+  }
+
+  async function vibrateSideLong(side) {
+    const characteristic = side === 'left' ? leftBleWriteCharacteristic : rightBleWriteCharacteristic;
+    await pulseLong(characteristic, MOTOR_LONG_PULSE_MS);
+  }
+
+  async function vibrateBothLong(patternCount) {
+    for (let i = 0; i < patternCount; i++) {
+      await Promise.all([
+        pulseLong(leftBleWriteCharacteristic, MOTOR_LONG_PULSE_MS),
+        pulseLong(rightBleWriteCharacteristic, MOTOR_LONG_PULSE_MS)
+      ]);
+      if (i < patternCount - 1) {
+        await waitMs(MOTOR_PULSE_GAP_MS);
+      }
+    }
+  }
+
+  async function vibrateBothShortOnce() {
+    await Promise.all([
+      pulseLong(leftBleWriteCharacteristic, MOTOR_SHORT_PULSE_MS),
+      pulseLong(rightBleWriteCharacteristic, MOTOR_SHORT_PULSE_MS)
+    ]);
+  }
+
   async function connectSensor(buttonId, sideName) {
     const button = document.getElementById(buttonId);
     const statusDiv = document.getElementById('pairingStatus');
@@ -112,6 +160,8 @@
         const server = await device.gatt.connect();
         const service = await server.getPrimaryService(bleServiceUUID);
         const characteristic = await service.getCharacteristic(bleCharacteristicUUID);
+        if (sideName === 'Left') leftBleWriteCharacteristic = characteristic;
+        if (sideName === 'Right') rightBleWriteCharacteristic = characteristic;
 
         await characteristic.startNotifications();
         
@@ -175,6 +225,8 @@
             
             if (sideName === 'Left') leftConnected = false;
             if (sideName === 'Right') rightConnected = false;
+            if (sideName === 'Left') leftBleWriteCharacteristic = null;
+            if (sideName === 'Right') rightBleWriteCharacteristic = null;
             
             statusDiv.innerHTML = `<span style="color:red">⚠ ${sideName} sensor disconnected.</span>`;
             nextBtn.style.display = 'none'; 
@@ -350,6 +402,8 @@
 ];
 
 let currentWarmup = 0;
+/** Screen 5: egy „duration” lépés ennyi ms — 30→0 így 15 mp (lassabb demo tempó). */
+const WARMUP_COUNTDOWN_STEP_MS = (15 * 1000) / 30;
 /** Screen 5: countdown csak akkor indul, ha a bal roll < 30 (és jött bal BLE minta). */
 let warmupWaitingForRoll = false;
 const remainingDiv = document.getElementById('remainingExercises');
@@ -398,7 +452,7 @@ function startWarmupExerciseCountdown(exIndex) {
         showScreen(6);
       }
     }
-  }, 1000 / 6);
+  }, WARMUP_COUNTDOWN_STEP_MS);
 }
 
 function tryBeginWarmupFromRoll() {
@@ -622,13 +676,23 @@ function renderSetCountdown() {
 /** Screen 10: egy rep = roll < -30, majd vissza ≥ -10 (`leftSensorData.roll`). */
 const ACTIVE_SET_REP_ROLL_DEEP = -30;
 const ACTIVE_SET_REP_ROLL_RECOVER = -10;
+const ACTIVE_SET_RESUME_ABS_ROLL_MAX = 30;
+const ACTIVE_SET_SYMMETRY_DIFF_THRESHOLD = 30;
+const ACTIVE_SET_TEMPO_WARNING_DEVIATION_PCT = 10;
+const ACTIVE_SET_TEMPO_DANGER_DEVIATION_PCT = 40;
+const ACTIVE_SET_CONTINUE_DELAY_SECONDS = 5;
 
 let activeSetRepRafId = null;
+let activeSetResumeCountdownIntervalId = null;
 
 function stopActiveSetRepTracking() {
   if (activeSetRepRafId != null) {
     cancelAnimationFrame(activeSetRepRafId);
     activeSetRepRafId = null;
+  }
+  if (activeSetResumeCountdownIntervalId != null) {
+    clearInterval(activeSetResumeCountdownIntervalId);
+    activeSetResumeCountdownIntervalId = null;
   }
 }
 
@@ -652,13 +716,93 @@ function renderActiveSet() {
   document.getElementById('activeExerciseName').innerText = ex.name;
   document.getElementById('repTotal').innerText = totalReps;
 
-  // Rep counter (BLE roll alapú)
+  // Rep counter + form control state
+  const repCountEl = document.getElementById('repCount');
+  const symmetryCardEl = document.getElementById('activeSymmetryCard');
+  const tempoCardEl = document.getElementById('activeTempoCard');
+  const notificationPanelEl = document.getElementById('notificationPanel');
+  const continueCountdownEl = document.getElementById('continueSetCountdown');
   let currentRep = 0;
   let awaitingRecoverAfterDeep = false;
-  document.getElementById('repCount').innerText = 0;
+  let activeSetState = 'measuring';
+  let lastRepCompleteTime = null;
+  let tempoBaselineMs = null;
+  const interRepSamples = [];
+  repCountEl.innerText = 0;
 
   stopActiveSetRepTracking();
   showScreen(10);
+
+  function setSymmetryNormal() {
+    symmetryCardEl.innerText = 'Symmetry: Good';
+    symmetryCardEl.classList.remove('info-card--danger');
+  }
+
+  function setSymmetryFault(side) {
+    symmetryCardEl.innerText = `Symmetry: Level ${side} arm`;
+    symmetryCardEl.classList.add('info-card--danger');
+  }
+
+  function setTempoState(mode) {
+    tempoCardEl.classList.remove('info-card--warning', 'info-card--danger');
+    if (mode === 'stable') {
+      tempoCardEl.innerText = 'Tempo: Stable';
+      return;
+    }
+    if (mode === 'inconsistent') {
+      tempoCardEl.innerText = 'Tempo: Inconsistent';
+      tempoCardEl.classList.add('info-card--warning');
+      return;
+    }
+    if (mode === 'fatigued') {
+      tempoCardEl.innerText = 'Tempo: Fatigued';
+      tempoCardEl.classList.add('info-card--danger');
+      return;
+    }
+    tempoCardEl.innerText = 'Tempo: Controlled';
+  }
+
+  function setNotification(message, level = 'normal') {
+    notificationPanelEl.innerText = message;
+    notificationPanelEl.classList.remove('notification-panel--warning', 'notification-panel--danger');
+    if (level === 'warning') {
+      notificationPanelEl.classList.add('notification-panel--warning');
+    } else if (level === 'danger') {
+      notificationPanelEl.classList.add('notification-panel--danger');
+    }
+  }
+
+  function enterFaultPausedState() {
+    activeSetState = 'faultPaused';
+    if (activeSetResumeCountdownIntervalId != null) {
+      clearInterval(activeSetResumeCountdownIntervalId);
+      activeSetResumeCountdownIntervalId = null;
+    }
+
+    let remainingSeconds = ACTIVE_SET_CONTINUE_DELAY_SECONDS;
+    continueCountdownEl.style.display = 'block';
+    continueCountdownEl.innerText = `Continue set in ${remainingSeconds}`;
+
+    activeSetResumeCountdownIntervalId = setInterval(() => {
+      remainingSeconds--;
+      if (remainingSeconds > 0) {
+        continueCountdownEl.innerText = `Continue set in ${remainingSeconds}`;
+        return;
+      }
+
+      clearInterval(activeSetResumeCountdownIntervalId);
+      activeSetResumeCountdownIntervalId = null;
+      continueCountdownEl.style.display = 'none';
+      activeSetState = 'awaitingNeutral';
+      setNotification('Return to neutral position to continue set.');
+      vibrateBothShortOnce().catch((error) => console.error('Continue vibration failed:', error));
+    }, 1000);
+  }
+
+  setSymmetryNormal();
+  setTempoState('controlled');
+  setNotification('Continue with controlled movements. Sensors are tracking your form.');
+  continueCountdownEl.style.display = 'none';
 
   function tickActiveSetReps() {
     if (currentScreen !== 10) {
@@ -666,19 +810,98 @@ function renderActiveSet() {
       return;
     }
 
-    const roll = leftSensorData.roll;
-    if (Number.isFinite(roll)) {
-      if (!awaitingRecoverAfterDeep && roll < ACTIVE_SET_REP_ROLL_DEEP) {
-        awaitingRecoverAfterDeep = true;
-      } else if (awaitingRecoverAfterDeep && roll >= ACTIVE_SET_REP_ROLL_RECOVER) {
+    const leftRoll = leftSensorData.roll;
+    const rightRoll = rightSensorData.roll;
+    const hasValidLeftRoll = Number.isFinite(leftRoll);
+    const hasValidRightRoll = Number.isFinite(rightRoll);
+
+    if (activeSetState === 'awaitingNeutral') {
+      const backInNeutral =
+        hasValidLeftRoll &&
+        hasValidRightRoll &&
+        Math.abs(leftRoll) < ACTIVE_SET_RESUME_ABS_ROLL_MAX &&
+        Math.abs(rightRoll) < ACTIVE_SET_RESUME_ABS_ROLL_MAX;
+      if (backInNeutral) {
+        activeSetState = 'measuring';
+        continueCountdownEl.style.display = 'none';
         awaitingRecoverAfterDeep = false;
-        currentRep++;
-        document.getElementById('repCount').innerText = currentRep;
+        lastRepCompleteTime = performance.now();
+        setSymmetryNormal();
+        setTempoState('controlled');
+        setNotification('Continue with controlled movements. Sensors are tracking your form.');
+      }
+      activeSetRepRafId = requestAnimationFrame(tickActiveSetReps);
+      return;
+    }
+
+    if (activeSetState === 'faultPaused') {
+      activeSetRepRafId = requestAnimationFrame(tickActiveSetReps);
+      return;
+    }
+
+    if (
+      hasValidLeftRoll &&
+      hasValidRightRoll &&
+      Math.abs(leftRoll - rightRoll) > ACTIVE_SET_SYMMETRY_DIFF_THRESHOLD
+    ) {
+      const side = leftRoll > rightRoll ? 'left' : 'right';
+      setSymmetryFault(side);
+      setNotification('Major asymmetry detected - adjust form as shown in animation', 'danger');
+      enterFaultPausedState();
+      vibrateSideLong(side).catch((error) => console.error('Symmetry vibration failed:', error));
+      activeSetRepRafId = requestAnimationFrame(tickActiveSetReps);
+      return;
+    }
+
+    setSymmetryNormal();
+
+    if (hasValidLeftRoll) {
+      if (!awaitingRecoverAfterDeep && leftRoll < ACTIVE_SET_REP_ROLL_DEEP) {
+        awaitingRecoverAfterDeep = true;
+      } else if (awaitingRecoverAfterDeep && leftRoll >= ACTIVE_SET_REP_ROLL_RECOVER) {
+        awaitingRecoverAfterDeep = false;
+        currentRep = Math.min(currentRep + 1, totalReps);
+        repCountEl.innerText = currentRep;
+
+        // A célrepszám elérése mindig lezárja a szettet, akkor is, ha ez a rep tempo faultot okozna.
         if (currentRep >= totalReps) {
           stopActiveSetRepTracking();
           setTimeout(() => renderRest(), 800);
           return;
         }
+
+        const now = performance.now();
+        if (lastRepCompleteTime != null) {
+          const interRepMs = now - lastRepCompleteTime;
+          if (Number.isFinite(interRepMs) && interRepMs > 0) {
+            if (tempoBaselineMs == null) {
+              if (interRepSamples.length < 2) {
+                interRepSamples.push(interRepMs);
+                if (interRepSamples.length === 2) {
+                  tempoBaselineMs = (interRepSamples[0] + interRepSamples[1]) / 2;
+                  setTempoState('stable');
+                }
+              }
+            } else {
+              const pctDeviation = (Math.abs(interRepMs - tempoBaselineMs) / tempoBaselineMs) * 100;
+              if (pctDeviation > ACTIVE_SET_TEMPO_DANGER_DEVIATION_PCT) {
+                setTempoState('fatigued');
+                setNotification('Fatigue detected - adjust load or form', 'danger');
+                enterFaultPausedState();
+                vibrateBothLong(2).catch((error) => console.error('Tempo fatigue vibration failed:', error));
+              } else if (pctDeviation >= ACTIVE_SET_TEMPO_WARNING_DEVIATION_PCT) {
+                setTempoState('inconsistent');
+                setNotification('Avoid using momentum. Use slow, controlled movements to protect your joints.', 'warning');
+                enterFaultPausedState();
+                vibrateBothLong(1).catch((error) => console.error('Tempo warning vibration failed:', error));
+              } else {
+                setTempoState('stable');
+                setNotification('Continue with controlled movements. Sensors are tracking your form.');
+              }
+            }
+          }
+        }
+        lastRepCompleteTime = now;
       }
     }
 

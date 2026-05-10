@@ -401,6 +401,14 @@
   padding:10px; 
   border-radius:6px; 
 }
+.info-card--warning {
+  background: #ffe3bf;
+  color: #8a4b00;
+}
+.info-card--danger {
+  background: #ffd2d2;
+  color: #8b0000;
+}
 .big-number { 
   font-size:1.5em; 
   font-weight:bold; 
@@ -456,6 +464,19 @@
   border-radius: 6px;
   margin-top: 10px;
   font-size: 0.9em;
+  color: #333;
+}
+.notification-panel--warning {
+  color: #8a4b00;
+}
+.notification-panel--danger {
+  color: #8b0000;
+}
+
+#continueSetCountdown {
+  margin-top: 10px;
+  text-align: center;
+  font-weight: bold;
   color: #333;
 }
 
