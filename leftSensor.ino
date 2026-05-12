@@ -21,6 +21,10 @@ bool oldDeviceConnected = false;
 // Konfiguráció
 const int MOTOR_PIN = 3;
 unsigned long utolsoSorosKiiras = 0;
+const long UJJ_DETEKTALASI_KUSZOB = 50000;
+const unsigned long UJJ_DEBOUNCE_MS = 500;
+const byte BPM_ATLAG_MERET = 4;
+const byte IBI_TOMB_MERET = 10;
 
 // MOTOR VEZÉRLŐ VÁLTOZÓ
 // 0: kikapcsolva, 1: rezeg
@@ -63,11 +67,39 @@ MAX30105 particleSensor;
 long utolsoDobbanasIdeje = 0;
 float bpmErtek = 0;
 float hrvErtek = 0;
-long ibiIdok[10];
+long ibiIdok[IBI_TOMB_MERET];
 // Az utolsó 10 szívverés közötti idő tárolása a HRV-hez
 int ibiIndex = 0;
+byte ibiMintakSzama = 0;
 long elozoElfogadottIBI = 0;
 float simitottHrv = 0;
+bool elsoDetektaltBeat = true;
+bool ujjStabilanRajta = false;
+unsigned long ujjDetektalasKezdete = 0;
+float bpmTomb[BPM_ATLAG_MERET];
+byte bpmTombIndex = 0;
+byte bpmMintakSzama = 0;
+
+void resetPulzusAllapot() {
+  bpmErtek = 0;
+  hrvErtek = 0;
+  simitottHrv = 0;
+  elozoElfogadottIBI = 0;
+  elsoDetektaltBeat = true;
+  ibiIndex = 0;
+  ibiMintakSzama = 0;
+  bpmTombIndex = 0;
+  bpmMintakSzama = 0;
+  utolsoDobbanasIdeje = millis();
+
+  for (byte i = 0; i < IBI_TOMB_MERET; i++) {
+    ibiIdok[i] = 0;
+  }
+
+  for (byte i = 0; i < BPM_ATLAG_MERET; i++) {
+    bpmTomb[i] = 0;
+  }
+}
 
 void setup() {
   Serial.begin(115200);
@@ -113,15 +145,16 @@ void setup() {
     while(1);
   }
   
-  // Beállítás: 400 Hz mintavétel (2.5 ms pontosság), 0 átlagolás (nyers sebesség)
-  byte ledBrightness = 0x1F; // Erős LED fény a stabil jelhez
-  byte sampleAverage = 1;    // Nincs hardveres átlagolás, hogy gyorsabb legyen
+  // Stabilabb beállítások BPM/HRV-hez
+  byte ledBrightness = 60;   // Kicsit erősebb LED a jobb jelhez
+  byte sampleAverage = 4;    // Hardveres átlagolás zajcsökkentéshez
   byte ledMode = 2;          // Red + IR
-  int sampleRate = 400;      // 400 minta/másodperc (nagyon fontos a HRV-hez!)
+  int sampleRate = 100;      // Stabil mintavétel a beat detektáláshoz
   int pulseWidth = 411;      // Széles impulzus a jobb jel/zaj arányhoz
   int adcRange = 4096;       // Szenzor érzékenysége
 
   particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange);
+  resetPulzusAllapot();
 }
 
 void loop() {
@@ -132,76 +165,110 @@ void loop() {
   float taroltPitch = szogek.x;
   float taroltRoll = szogek.y;
 
-  // Pulzus adatok beolvasása
-  long nyersIR = particleSensor.getIR();
+  // Pulzus adatok beolvasása FIFO-ból (csak új mintákat dolgozunk fel)
+  particleSensor.check();
+  while (particleSensor.available()) {
+    long nyersIR = particleSensor.getFIFOIR();
+    particleSensor.nextSample();
 
-  // JAVÍTÁS: Csak akkor vizsgáljuk a pulzust, ha van ujj a szenzoron (> 50,000 érték)
-  if (nyersIR > 50000) {
-      
-      // Szívverés detektálása
-      if (checkForBeat(nyersIR) == true) {
-        long mostaniIdo = millis();
-        long elteltIdo = mostaniIdo - utolsoDobbanasIdeje;
+    // Ujj detektálás + debounce
+    if (nyersIR > UJJ_DETEKTALASI_KUSZOB) {
+      if (ujjDetektalasKezdete == 0) {
+        ujjDetektalasKezdete = millis();
+      }
+
+      if (!ujjStabilanRajta && (millis() - ujjDetektalasKezdete >= UJJ_DEBOUNCE_MS)) {
+        ujjStabilanRajta = true;
+        resetPulzusAllapot();
+      }
+    } else {
+      ujjDetektalasKezdete = 0;
+      if (ujjStabilanRajta) {
+        ujjStabilanRajta = false;
+        resetPulzusAllapot();
+      }
+      continue;
+    }
+
+    if (!ujjStabilanRajta) {
+      continue;
+    }
+
+    if (checkForBeat(nyersIR) == true) {
+      unsigned long mostaniIdo = millis();
+
+      // Az első detektált beat csak szinkronpont, ebből még nem számolunk BPM-et.
+      if (elsoDetektaltBeat) {
         utolsoDobbanasIdeje = mostaniIdo;
-    
-        // Szigorúbb BPM szűrés (kb. 40-200 BPM közötti reális értékek)
-        if (elteltIdo > 400 && elteltIdo < 1500) { 
-          
-          // 1. ZAJ ÉS FANTOM ÜTÉSEK KISZŰRÉSE (Artifact filtering)
-          if (elozoElfogadottIBI == 0 || abs(elteltIdo - elozoElfogadottIBI) < (elozoElfogadottIBI * 0.25)) {
-          
-            // Stabil BPM számítás
-            bpmErtek = 60000 / (float)elteltIdo;
+        elsoDetektaltBeat = false;
+        continue;
+      }
 
-            // IBI eltárolása a körkörös tömbben a HRV-hez
-            ibiIdok[ibiIndex] = elteltIdo;
-            ibiIndex = (ibiIndex + 1) % 10;
-            
-            // 2. VALÓDI RMSSD (HRV) KISZÁMÍTÁSA A TÖMBBŐL
+      long elteltIdo = (long)(mostaniIdo - utolsoDobbanasIdeje);
+      utolsoDobbanasIdeje = mostaniIdo;
+
+      // Reális IBI tartomány (kb. 40-200 BPM)
+      if (elteltIdo > 300 && elteltIdo < 1500) {
+        // Kicsit lazább artifact filter, hogy ne dobjon el túl sok valós beatet.
+        bool artifactSzuresOk = (elozoElfogadottIBI == 0) ||
+                                (labs(elteltIdo - elozoElfogadottIBI) <= (long)(elozoElfogadottIBI * 0.35f));
+
+        if (artifactSzuresOk) {
+          float pillanatnyiBpm = 60000.0f / (float)elteltIdo;
+
+          // BPM futó átlag (SparkFun jellegű simítás)
+          bpmTomb[bpmTombIndex] = pillanatnyiBpm;
+          bpmTombIndex = (bpmTombIndex + 1) % BPM_ATLAG_MERET;
+          if (bpmMintakSzama < BPM_ATLAG_MERET) {
+            bpmMintakSzama++;
+          }
+
+          float bpmOsszeg = 0;
+          for (byte i = 0; i < bpmMintakSzama; i++) {
+            bpmOsszeg += bpmTomb[i];
+          }
+          bpmErtek = bpmOsszeg / bpmMintakSzama;
+
+          // IBI eltárolása körkörös tömbben
+          ibiIdok[ibiIndex] = elteltIdo;
+          ibiIndex = (ibiIndex + 1) % IBI_TOMB_MERET;
+          if (ibiMintakSzama < IBI_TOMB_MERET) {
+            ibiMintakSzama++;
+          }
+
+          // RMSSD számítás időrendben a circular bufferből
+          if (ibiMintakSzama >= 2) {
             float sumOfSquares = 0;
             int validPairs = 0;
-            
-            // Végigmegyünk a tömb elemein, és a szomszédosak különbségét vizsgáljuk
-            for (int i = 0; i < 9; i++) {
-              long current = ibiIdok[i];
-              long next = ibiIdok[i+1];
-              
-              // Csak azokat a párokat nézzük, ahol már van valós adat (nem 0)
+            int startIdx = (ibiMintakSzama == IBI_TOMB_MERET) ? ibiIndex : 0;
+
+            for (byte i = 0; i < ibiMintakSzama - 1; i++) {
+              int idx = (startIdx + i) % IBI_TOMB_MERET;
+              int nextIdx = (startIdx + i + 1) % IBI_TOMB_MERET;
+              long current = ibiIdok[idx];
+              long next = ibiIdok[nextIdx];
+
               if (current > 0 && next > 0) {
-                float diff = current - next;
+                float diff = (float)(current - next);
                 sumOfSquares += (diff * diff);
                 validPairs++;
               }
             }
-            
-            // Ha van legalább egy érvényes párunk, kiszámoljuk a gyököt
+
             if (validPairs > 0) {
               hrvErtek = sqrt(sumOfSquares / validPairs);
-
-              // EMA SZŰRŐ: A korábbi érték 90%-át és az új érték 10%-át vesszük.
-              if (simitottHrv == 0) simitottHrv = hrvErtek; // Kezdeti érték beállítása
-              simitottHrv = (simitottHrv * 0.90) + (hrvErtek * 0.10);
+              if (simitottHrv == 0) {
+                simitottHrv = hrvErtek;
+              } else {
+                simitottHrv = (simitottHrv * 0.90f) + (hrvErtek * 0.10f);
+              }
             }
-            
-            // Eltesszük az értéket a következő szűréshez
-            elozoElfogadottIBI = elteltIdo;
+          }
 
-          } 
+          elozoElfogadottIBI = elteltIdo;
         }
       }
-  } else {
-      // JAVÍTÁS: Nincs ujj a szenzoron. Változók nullázása.
-      bpmErtek = 0;
-      simitottHrv = 0;
-      elozoElfogadottIBI = 0;
-      
-      // Időzítő szinkronizálása, hogy amikor visszateszed az ujjad, az első elteltIdo ne legyen irreálisan nagy
-      utolsoDobbanasIdeje = millis(); 
-      
-      // Tömb nullázása, hogy a régi értékek ne rontsák az új HRV mérést
-      for (int i = 0; i < 10; i++) {
-          ibiIdok[i] = 0;
-      }
+    }
   }
 
   // --- 2. MOTOR VEZÉRLÉSE VÁLTOZÓ ALAPJÁN ---
