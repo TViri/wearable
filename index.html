@@ -18,6 +18,10 @@
   <div id="screen2" class="screen">
     <h1>Pre-Workout</h1>
     <h2>Diagnostic & Setup</h2>
+    <div class="box" id="placementBox">
+      <h1>Power Up</h1>
+      <p>Turn on both modules while they are resting flat on the table.</p>
+    </div>
     <h1>Select Activity</h1>
     <button type="button" class="activity-btn" data-activity="upper">Upper Body</button>
     <button type="button" class="activity-btn" data-activity="lower" disabled>Lower Body</button>
@@ -32,13 +36,13 @@
     <h1>Sensor Setup</h1>
     <div class="box" id="placementBox">
       <div id="placementText">placeholder</div>
-      <div class="placeholder">Animation placeholder: how to put on sensor</div>
+      <img src="images/placement.png" alt="How to put on sensor" class="sensor-guide">
       <ul class="instructions">
-        <li class="bullet">Position sensors on the front of each thigh</li>
-        <li class="bullet">Secure bands snugly above the knee</li>
-        <li class="bullet">Ensure sensors are aligned horizontally</li>
+        <li class="bullet">Put <b>L</b> on your left arm, <b>R</b> on your right</li>
+        <li class="bullet">Make sure the plastic boxes face directly forward</li>
+        <li class="bullet">Adjust straps to be comfortable but secure enough not to slip</li>
       </ul>
-      <button id="sensorsReadyBtn">Sensors Ready</button>
+      <button id="sensorsReadyBtn">Sensors On & Ready</button>
     </div>
 
     <!-- Pairing box hidden initially -->
@@ -50,10 +54,10 @@
         <li class="bullet">Keep sensors close to your phone during pairing</li>
       </ul>
       
-      <button id="pairLeftBtn" style="margin-bottom: 10px;">Pair Left Sensor</button>
+      <button id="pairLeftBtn">Pair Left Sensor</button>
       <button id="pairRightBtn">Pair Right Sensor</button>
       
-      <div id="pairingStatus" style="margin-top: 15px; font-weight: bold;"></div>
+      <div id="pairingStatus" style="display:none; margin-top: 15px; font-weight: bold;"></div>
 
       <div id="bleDataDisplay" style="margin-top: 15px; font-size: 14px; color: #666; display: none; text-align: left;">
         <div><strong>Left Sensor:</strong> <span id="leftGyroData">-</span></div>
@@ -76,15 +80,18 @@
     <div class="box" id="hrvBox">
       <h1>HRV Measurement</h1>
       <div>Measure your readiness score</div>
+      <ul class="instructions">
+        <li class="bullet">Gently place your index finger over the red light on the left sensor</li>
+        <li class="bullet">Hold still while it reads your heart rate</li>
+      </ul>
       <button id="startHRVBtn">Start Measurement</button>
       <div id="hrvFinger" style="display:none;">
-        Place your finger on the sensor and keep still for 30s
       </div>
       <div id="fingerPlaceholder" class="placeholder" style="display:none;">
         Animation placeholder: where to put finger
       </div>
       <div id="hrvCountdown" class="countdown" style="display:none;">30</div>
-      <div class="wave" id="hrvWave" style="display:none;">BPM: <span id="hrvLiveBpm">—</span></div>
+      <div class="wave" id="hrvWave" style="display:none;">BPM: <span id="hrvLiveBpm">Measuring...</span></div>
       <div id="readinessResult" style="display:none;">
         <h2>Today's readiness</h2>
         <div id="readinessScore"></div>
@@ -96,12 +103,16 @@
     <div class="box" id="calibrationBox" style="display:none;">
       <h1>Sensor Calibration</h1>
       <h2>Ensure your sensors track accurately</h2>
+      <ul class="instructions">
+        <li class="bullet">Stand normally with arms relaxed at your sides</li>
+        <li class="bullet">Hold still during calibration</li>
+      </ul>
       <button id="startCalibrationBtn">Calibrate Sensors</button>
 
       <div id="calibrationCountdown" class="countdown" style="display:none;"></div>
       <div id="calibrationText" style="text-align:center;margin:5px;"></div>
-      <div id="calibrationLoading" class="placeholder" style="display:none;">0%</div>
-      <div id="calibrationComplete" style="display:none;">Calibration complete<br>Sensors are ready to track your movement</div>
+      <div id="calibrationLoading" class="placeholder" style="display:none; font-size: 20px;">0%</div>
+      <div id="calibrationComplete" style="display:none;"><b>Calibration complete</b><br>Sensors are ready to track your movement</div>
     </div>
 
     <button id="startWarmupBtn" style="display:none;margin-top:10px;">Start Warm-up</button>
@@ -111,7 +122,7 @@
   <div id="screen5" class="screen">
     <h1>Warm-up</h1>
     <h2>Dynamic mobility flow</h2>
-    <div id="warmupProgressText">0 of 5 complete (0%)</div>
+    <div id="warmupProgressText">0 of 4 complete (0%)</div>
     <div class="progress-container">
       <div class="progress-bar" id="warmupProgressBar"></div>
       
@@ -121,7 +132,9 @@
     <div class="box" id="exerciseBox">
       <h3 id="exerciseName"></h3>
       <div id="exerciseInstruction"></div>
-      <div class="placeholder" id="exerciseAnimation">Animation placeholder: how to do it</div>
+      <div class="exercise-animation">
+        <video src="images/warmup.mp4" autoplay loop muted playsinline></video>
+      </div>
       <div id="waitingMotion">
         Start moving, countdown will begin automatically.<br>
         <div id="waitingMotion">
@@ -193,7 +206,9 @@
         <span class="muscle-tag">Muscle 1</span>
         <span class="muscle-tag">Muscle 2</span>
       </div>
-      <div class="placeholder" id="exerciseAnimation">Animation placeholder</div>
+      <div class="exercise-animation">
+        <video src="images/press.mp4" autoplay loop muted playsinline></video>
+      </div>
 
       <div class="exercise-info-cards">
         <div class="info-card">
@@ -268,8 +283,8 @@
     </div>
 
     <div class="small-cards">
-      <div class="info-card" id="activeSymmetryCard">Symmetry: Good</div>
-      <div class="info-card" id="activeTempoCard">Tempo: Controlled</div>
+      <div class="info-card" id="activeSymmetryCard" style="font-size: 1.2em;">Symmetry: Good</div>
+      <div class="info-card" id="activeTempoCard" style="font-size: 1.2em;">Tempo: Controlled</div>
     </div>
 
     <div class="notification-panel" id="notificationPanel">
@@ -334,7 +349,9 @@
   <div class="box" id="stretchBox">
     <h3 id="stretchName"></h3>
     <div id="stretchInstruction"></div>
-    <div class="placeholder" id="stretchAnimation">Animation placeholder: how to do it</div>
+    <div class="stretch-animation">
+      <img src="images/cooldown.png" alt="How to do the stretch">
+    </div>
     <div id="stretchCountdown" class="countdown" style="display:none;">30</div>
     <button id="skipStretchBtn">Skip</button>
   </div>
@@ -353,6 +370,10 @@
   <div class="box" id="postHrvBox">
     <h1>Recovery Check</h1>
     <div>See how your body responded to the workout</div>
+    <ul class="instructions">
+        <li class="bullet">Gently place your index finger over the red light on the left sensor</li>
+        <li class="bullet">Hold still while it reads your heart rate</li>
+    </ul>
     <button id="startPostHRVBtn">Start Measurement</button>
 
     <div id="postHrvFinger" style="display:none;">
@@ -362,7 +383,7 @@
       Animation placeholder: where to put finger
     </div>
     <div id="postHrvCountdown" class="countdown" style="display:none;">30</div>
-    <div class="wave" id="postHrvWave" style="display:none;">BPM: <span id="postHrvLiveBpm">—</span></div>
+    <div class="wave" id="postHrvWave" style="display:none;">BPM: <span id="postHrvLiveBpm">Measuring...</span></div>
 
     <div id="recoveryResult" style="display:none;">
       <h2>Today's recovery</h2>

@@ -99,13 +99,20 @@
     border-radius: 6px;
   }
 
+  .sensor-guide {
+    display: block;
+    width: 100%;
+    border-radius: 6px;
+    margin: 10px 0;
+  }
+
   .instructions {
     margin: 5px 0;
     padding-left: 15px;
   }
 
   .bullet {
-    margin: 3px 0;
+    margin: 8px 0;
   }
 
   .countdown {
@@ -122,6 +129,7 @@
     text-align: center;
     line-height: 80px;
     color: #888;
+    font-size: 20px;
   }
 
   .flex-row {
@@ -191,6 +199,22 @@
   width:0%;
   border-radius:5px;
 }
+
+.exercise-animation {
+  background-color: white;
+  height: 200px;
+  display: flex;
+  justify-content: center;
+  border-radius: 6px;
+  margin: 10px 0;
+}
+
+.exercise-animation video {
+  height: 100%;
+  width: auto;
+  aspect-ratio: 1;
+}
+
 #warmupProgressText, #workoutProgressText {
   margin-top:5px;
   font-size:0.9em;
@@ -222,6 +246,11 @@
 #waitingDots::after {
   content: '.';
   animation: dots 1.2s infinite;
+}
+
+#waitingMotion {
+  font-size: 1.1em;
+  padding: 5px 0;
 }
 
 @keyframes dots {
@@ -353,7 +382,14 @@
   width: 100%; 
   height: 100%; 
   padding: 10px; 
+  overflow-y: scroll;
+  scrollbar-width: none;
 }
+
+.screen::-webkit-scrollbar {
+  display: none;
+}
+
 .screen.active { 
   display: flex; 
 }
@@ -410,8 +446,8 @@
   color: #8b0000;
 }
 .big-number { 
-  font-size:1.5em; 
-  font-weight:bold; 
+  font-size: 2em; 
+  font-weight: bold; 
 }
 
 .exercise-buttons { 
@@ -495,6 +531,20 @@
   font-size: 2em;
   text-align: center;
   margin: 10px 0;
+}
+
+.stretch-animation {
+  background-color: white;
+  height: 200px;
+  display: flex;
+  justify-content: center;
+  border-radius: 6px;
+  margin: 10px 0;
+}
+
+.stretch-animation img {
+  height: 100%;
+  width: auto;
 }
 
 #stretchWaitingDots::after {

@@ -147,6 +147,7 @@
   async function connectSensor(buttonId, sideName) {
     const button = document.getElementById(buttonId);
     const statusDiv = document.getElementById('pairingStatus');
+    statusDiv.style.display = 'block';
     const nextBtn = document.getElementById('screen3Next');
 
     try {
@@ -285,9 +286,31 @@
     return { hrvMs, message, scoreText, invalid };
   }
 
+  function getRecoveryDisplayFromHrvMs(rawHrv) {
+    const hrvMs = Number.isFinite(rawHrv) ? Math.round(rawHrv * 10) / 10 : 0;
+    let message = '';
+    let invalid = false;
+
+    if (hrvMs <= 0 || !Number.isFinite(rawHrv)) {
+      message = 'No reliable HRV reading. Pair the left sensor and keep your finger on the sensor for the full 30 seconds.';
+      invalid = true;
+    } else if (hrvMs >= 80) {
+      message = 'Your body handled the workout well. Recovery looks strong — you absorbed the training load effectively. Keep up your sleep and nutrition, and you should be ready for another quality session tomorrow.';
+    } else if (hrvMs >= 60) {
+      message = 'Moderate training strain detected. Your body needs a bit more time to reset. Prioritize hydration and quality sleep tonight. Tomorrow, consider light mobility or active rest rather than heavy loading.';
+    } else if (hrvMs >= 40) {
+      message = 'Your body is showing signs of significant fatigue after this session. Take recovery seriously today — avoid additional strain, eat well, and get to bed early. A rest day or gentle walk tomorrow would serve you better than another workout.';
+    } else {
+      message = 'High training stress detected. Your nervous system is under considerable load. Full rest is strongly recommended — no training tomorrow. Focus on sleep, nutrition, and stress management over the next 24–48 hours.';
+    }
+
+    const scoreText = hrvMs > 0 ? `HRV: ${hrvMs} ms` : 'HRV: —';
+    return { hrvMs, message, scoreText, invalid };
+  }
+
   function formatLiveHrvBpm(bpm) {
     if (!leftConnected) return '—';
-    if (!Number.isFinite(bpm) || bpm <= 0) return '—';
+    if (!Number.isFinite(bpm) || bpm <= 0) return 'Measuring...';
     return String(Math.round(bpm));
   }
 
@@ -360,7 +383,7 @@
     document.getElementById('calibrationCountdown').style.display='block';
     let count = 3;
     document.getElementById('calibrationCountdown').innerText = count;
-    document.getElementById('calibrationText').innerText='Stand with feet hip-width apart';
+   //document.getElementById('calibrationText').innerText='Stand with feet hip-width apart';
     let countdownInterval = setInterval(()=>{
       count--;
       if(count>0) document.getElementById('calibrationCountdown').innerText = count;
@@ -1134,7 +1157,7 @@ document.getElementById('startPostHRVBtn').addEventListener('click', () => {
       fingerEl.style.display = 'none';
 
       const rawHrv = leftSensorData.hrv;
-      const { hrvMs, message, scoreText, invalid } = getReadinessDisplayFromHrvMs(rawHrv);
+      const { hrvMs, message, scoreText, invalid } = getRecoveryDisplayFromHrvMs(rawHrv);
       if (!invalid) postWorkoutHRV = hrvMs;
 
       startBtn.disabled = false;
@@ -1152,7 +1175,11 @@ document.getElementById('viewSummaryBtn').addEventListener('click', () => {
 });
 
 
+// Screen 15: Finish
 
+document.getElementById('finishWorkoutBtn').addEventListener('click', () => {
+  location.reload();
+});
 
 
 
