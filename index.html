@@ -37,12 +37,12 @@
     <div class="box" id="placementBox">
       <div id="placementText">placeholder</div>
       <img src="images/placement.png" alt="How to put on sensor" class="sensor-guide">
-      <ul class="instructions">
+      <ul class="instructions" id="placementInstructions">
         <li class="bullet">Put <b>L</b> on your left arm, <b>R</b> on your right</li>
         <li class="bullet">Make sure the plastic boxes face directly forward</li>
         <li class="bullet">Adjust straps to be comfortable but secure enough not to slip</li>
       </ul>
-      <button id="sensorsReadyBtn">Sensors On & Ready</button>
+      <button id="sensorsReadyBtn">Both PODs Ready</button>
     </div>
 
     <!-- Pairing box hidden initially -->
@@ -53,7 +53,6 @@
         <li class="bullet">Ensure both sensors are turned on and fully charged</li>
         <li class="bullet">Keep sensors close to your phone during pairing</li>
       </ul>
-      
       <button id="pairLeftBtn">Pair Left Sensor</button>
       <button id="pairRightBtn">Pair Right Sensor</button>
       
@@ -69,6 +68,7 @@
       <button id="screen3Back">Back</button>
       <button id="screen3Next" style="display:none;">Next</button>
     </div>
+    <button type="button" id="skipToWorkoutDemoBtn" style="display:none;">Skip to Workout Demo</button>
   </div>
 
   <!-- Screen 4: HRV Measurement + Calibration -->

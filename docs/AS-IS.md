@@ -46,7 +46,7 @@ Az alkalmazás egy **workout flow demó**: több teljes képernyős lépésben v
 |---|--------|---------------------------|
 | 1 | `screen1` | Start — belépés a flow-ba |
 | 2 | `screen2` | Aktivitás választás: Upper / Lower / Full látható; **választható csak Upper Body** (Lower/Full `disabled`). **Next** csak ha van kiválasztott aktivitás (`#screen2Next` `disabled` amíg üres `selectedActivity`). |
-| 3 | `screen3` | Sensor setup: felhelyezési szöveg + Pair Left / Pair Right (BLE) |
+| 3 | `screen3` | Sensor setup: felhelyezési kép/szöveg + bullet lista (`#placementInstructions`, kattintás után elrejtve), **Both PODs Ready** (`#sensorsReadyBtn` → zöld `#4CAF50`, disabled) → Pair Sensors box (saját bullet lista) + Pair Left / Pair Right (BLE). **Next** (`#screen3Next`) és **Skip to Workout Demo** (`#skipToWorkoutDemoBtn`, fekete/fehér) csak ha mindkét szenzor párosítva — utóbbi → screen 8 (HRV + warm-up kihagyása). |
 | 4 | `screen4` | Pre-workout HRV mérés (UI) + kalibráció (UI) → warm-up indítás |
 | 5 | `screen5` | Warm-up UI (5 gyakorlat listája); **demo:** csak az 1. gyakorlat fut le, utána minden tile kész (zöld) → screen 6 |
 | 6 | `screen6` | Warm-up kész → workout overview |
@@ -72,7 +72,7 @@ Megjegyzés: az `index.html`-ben a kommentek részben angolul írják le a szekc
 | `selectedActivity` | `'upper' \| 'lower' \| 'full'` — workout és cooldown lista kulcsa |
 | `currentExerciseIndex`, `currentSetIndex` | Workout progress |
 | `currentWarmup` | Warm-up gyakorlat index |
-| `warmupWaitingForRoll` | Screen 5: warm-up számláló csak `leftSensorData.roll < 30` után indul (bal BLE minták alapján) |
+| `warmupWaitingForRoll` | Screen 5: warm-up számláló csak `leftConnected` + `leftSensorData.roll < 30` után indul |
 | `currentStretchIndex` | Cooldown stretch index |
 | `preWorkoutHRV` | Screen 4 mért **HRV (ms, firmware RMSSD-jellegű simított érték)** |
 | `postWorkoutHRV` | Screen 14 mért **HRV (ms)** — sikeres post-workout mérés után (`leftSensorData.hrv`), screen 15 felé jelenleg nem köttetve |
@@ -163,8 +163,9 @@ screen11 → Skip Rest → window.showScreen(12) (workout complete + cooldown el
 - **Pause / resume:** fault alatt se rep, se új fault-ellenőrzés nem fut. Hiba után automatikus `Continue set in 5..1` visszaszámlálás fut; a végén mindkét oldal röviden rezeg (folytatásjel). A mérés csak akkor folytatódik, ha mindkét oldal `|roll| < 30`; a pause ideje nem számít bele a tempo időkbe.
 - **Warm-up „motion detection”:** a countdown akkor indul, ha a **bal** szenzor BLE-jén érkező `leftSensorData.roll` érvényes és **30-nál kisebb** (minden gyakorlat előtt újra vár erre); a visszaszámláló lépésenként `WARMUP_COUNTDOWN_STEP_MS` (30 számjegy ≈ 15 mp összesen).
 - **Warm-up demo rövidítés:** az első gyakorlat (**Arm Circles**) számlálója után az összes warm-up tile **completed** (zöld), progress **100%**, ~700 ms múlva **screen 6** (nem futnak le a 2–5. gyakorlatok).
-- **Screen 4 HRV:** 30 mp valós visszaszámlálás (1 mp lépés); közben `#hrvLiveBpm` frissül `leftSensorData.bpm`-mel (~200 ms); a végén `preWorkoutHRV` és a kiírt érték `leftSensorData.hrv` (ms). Readiness szöveg **HRV ms** küszöbökkel (40 / 20 / 10); a **Start Measurement** gomb minden mérés után újra kattintható (ismételt mérés).
-- **Screen 14 recovery:** ugyanaz a **30 mp / 1 mp** HRV mérési blokk mint screen 4-en (élő BPM ~200 ms); a végeredmény szöveg és `HRV: … ms` a **`getReadinessDisplayFromHrvMs`** logikával egyezik (screen 4-gyel közös küszöbök); nincs előző értékhez viszonyított „strain” összehasonlítás. A **`#startPostHRVBtn` Start Measurement** minden mérés után újra kattintható (ismétlés); csak érvényes (`!invalid`) mérésnél frissül `postWorkoutHRV`.
+- **Screen 3 workout demo ugrás:** **Skip to Workout Demo** → `goToExerciseInfoScreen()` (reset `currentExerciseIndex` / `currentSetIndex`, `renderExerciseInfo()`, screen 8) — ugyanaz a belépés, mint screen 7 **Start Workout** után.
+- **Screen 4 HRV:** 30 mp valós visszaszámlálás (1 mp lépés); közben `#hrvLiveBpm` frissül `leftSensorData.bpm`-mel (~200 ms). **Demo BPM:** az első **8 mp** valós érték (0 → „Measuring…”); utána ha BPM **&lt; 30**, egy mérésen belül fix véletlen **75–95**; **≥ 30** → valós BPM. **Demo HRV** (mérés végén): BLE HRV **&lt; 40 ms** → véletlen **85–95 ms**; **≥ 40 ms** → valós. Readiness szöveg **HRV ms** küszöbökkel; **Start Measurement** újrakattintható.
+- **Screen 14 recovery:** ugyanaz a **30 mp / 1 mp** blokk és **demo BPM / HRV** logika mint screen 4-en; recovery szöveg **`getRecoveryDisplayFromHrvMs`**. **`#startPostHRVBtn`** újrakattintható; csak érvényes (`!invalid`) mérésnél frissül `postWorkoutHRV`.
 - **Kalibráció:** százalék animáció fix lépésekkel, nem szenzor.
 
 ---
@@ -233,5 +234,7 @@ Hatások:
 4. **`selectedActivity` védelem:** presenter ugrásnál default vagy guard.
 
 ---
+
+*Utolsó frissítés (2026-05-31): HRV/BPM demo — élő BPM: első 8 mp valós (0 → „Measuring…”); utána BPM &lt; 30 → fix véletlen 75–95 / mérés; ≥ 30 → valós. HRV végeredmény: `getDemoDisplayHrvMs` (&lt; 40 → 85–95 ms). Screen 5 warm-up — roll küszöb `WARMUP_ROLL_START_MAX` (30). Screen 3 — **Skip to Workout Demo**; `#skipToWorkoutDemoBtn` és `#screen3Next` párosítás után.*
 
 *Utolsó frissítés (2026-05-10): Screen 5 warm-up visszaszámláló lépésideje `WARMUP_COUNTDOWN_STEP_MS` — 30→0 megjelenítés összesen ~15 mp. Screen 10 Active Set kibővítve symmetry + tempo fault logikával. Symmetry: `|left.roll-right.roll| > ACTIVE_SET_SYMMETRY_DIFF_THRESHOLD` esetén a magasabb roll oldal rezeg, piros kártya/üzenet, majd pause. Tempo: az első két inter-rep interval baseline, ezután `<10%` stable, `10–40%` inconsistent (narancs + 1 hosszú rezgés mindkét oldalon), `>40%` fatigued (piros + 2 hosszú rezgés mindkét oldalon), faultnál pause. Hiba után automatikus `Continue set in 5..1` countdown fut, majd mindkét eszköz egy rövid rezgéssel jelzi a folytatási lehetőséget; a valódi mérés csak `|left.roll| < 30 && |right.roll| < 30` feltételnél indul újra. A pause-idő nem számít tempo gap-be. BLE oldalon bal/jobb write characteristic globálisan tárolva; oldalspecifikus és kétoldali rezgés pattern API használatban.*

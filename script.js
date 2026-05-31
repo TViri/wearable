@@ -10,6 +10,9 @@
     }
     document.getElementById('screen'+num).classList.add('active');
     currentScreen = num;
+    if (num === 5) {
+      updateWarmupScreen(currentWarmup);
+    }
   }
 
   const screen2NextBtn = document.getElementById('screen2Next');
@@ -55,6 +58,11 @@
 
 // Screen3: Sensor Setup
   document.getElementById('sensorsReadyBtn').addEventListener('click', ()=>{
+    const btn = document.getElementById('sensorsReadyBtn');
+    btn.style.backgroundColor = '#4CAF50';
+    btn.style.color = 'white';
+    btn.disabled = true;
+    document.getElementById('placementInstructions').style.display = 'none';
     document.getElementById('pairBox').style.display = 'block';
   });
 
@@ -149,6 +157,7 @@
     const statusDiv = document.getElementById('pairingStatus');
     statusDiv.style.display = 'block';
     const nextBtn = document.getElementById('screen3Next');
+    const skipBtn = document.getElementById('skipToWorkoutDemoBtn');
 
     try {
         statusDiv.style.color = '#000';
@@ -180,7 +189,8 @@
         statusDiv.innerHTML = `<span style="color:green">✓ ${sideName} sensor: Connected</span>`;
 
         if (leftConnected && rightConnected) {
-            nextBtn.style.display = 'block'; 
+            nextBtn.style.display = 'block';
+            skipBtn.style.display = 'block';
         }
 
         // --- ADATFELDOLGOZÁS ---
@@ -230,7 +240,8 @@
             if (sideName === 'Right') rightBleWriteCharacteristic = null;
             
             statusDiv.innerHTML = `<span style="color:red">⚠ ${sideName} sensor disconnected.</span>`;
-            nextBtn.style.display = 'none'; 
+            nextBtn.style.display = 'none';
+            skipBtn.style.display = 'none';
         });
 
     } catch (error) {
@@ -260,6 +271,19 @@
   let hrvMeasureBpmTimer = null;
   let postHrvMeasureCountdownTimer = null;
   let postHrvMeasureBpmTimer = null;
+  let hrvMeasureStartedAt = null;
+  let hrvMeasureDemoBpm = null;
+  let postHrvMeasureStartedAt = null;
+  let postHrvMeasureDemoBpm = null;
+
+  const HRV_BPM_DEMO_DELAY_MS = 8000;
+
+  /** Demo: alacsony BLE HRV (< 40 ms) helyett 85–95 ms közötti véletlen érték. */
+  function getDemoDisplayHrvMs(rawHrv) {
+    if (!Number.isFinite(rawHrv)) return rawHrv;
+    if (rawHrv < 40) return Math.floor(Math.random() * 11) + 85;
+    return rawHrv;
+  }
 
   /** Ugyanaz a HRV (ms) értelmezés és szöveg, mint a screen4 readiness blokkban. */
   function getReadinessDisplayFromHrvMs(rawHrv) {
@@ -308,22 +332,48 @@
     return { hrvMs, message, scoreText, invalid };
   }
 
-  function formatLiveHrvBpm(bpm) {
+  function formatLiveHrvBpm(bpm, { startedAt, demoBpm, setDemoBpm } = {}) {
     if (!leftConnected) return '—';
-    if (!Number.isFinite(bpm) || bpm <= 0) return 'Measuring...';
-    return String(Math.round(bpm));
+
+    let displayBpm = bpm;
+    const demoEligible =
+      startedAt != null && Date.now() - startedAt >= HRV_BPM_DEMO_DELAY_MS;
+
+    if (demoEligible && Number.isFinite(bpm) && bpm < 30) {
+      let cached = demoBpm;
+      if (cached == null) {
+        cached = Math.floor(Math.random() * 21) + 75;
+        if (setDemoBpm) setDemoBpm(cached);
+      }
+      displayBpm = cached;
+    }
+
+    if (!Number.isFinite(displayBpm) || displayBpm <= 0) return 'Measuring...';
+    return String(Math.round(displayBpm));
   }
 
   function updateHrvLiveBpmDisplay() {
     const el = document.getElementById('hrvLiveBpm');
     if (!el) return;
-    el.innerText = formatLiveHrvBpm(leftSensorData.bpm);
+    el.innerText = formatLiveHrvBpm(leftSensorData.bpm, {
+      startedAt: hrvMeasureStartedAt,
+      demoBpm: hrvMeasureDemoBpm,
+      setDemoBpm: (v) => {
+        hrvMeasureDemoBpm = v;
+      },
+    });
   }
 
   function updatePostHrvLiveBpmDisplay() {
     const el = document.getElementById('postHrvLiveBpm');
     if (!el) return;
-    el.innerText = formatLiveHrvBpm(leftSensorData.bpm);
+    el.innerText = formatLiveHrvBpm(leftSensorData.bpm, {
+      startedAt: postHrvMeasureStartedAt,
+      demoBpm: postHrvMeasureDemoBpm,
+      setDemoBpm: (v) => {
+        postHrvMeasureDemoBpm = v;
+      },
+    });
   }
 
   // Screen4: HRV Measurement + Calibration
@@ -333,6 +383,9 @@
 
     if (hrvMeasureCountdownTimer) clearInterval(hrvMeasureCountdownTimer);
     if (hrvMeasureBpmTimer) clearInterval(hrvMeasureBpmTimer);
+
+    hrvMeasureStartedAt = Date.now();
+    hrvMeasureDemoBpm = null;
 
     startBtn.disabled = true;
 
@@ -364,7 +417,7 @@
         document.getElementById('hrvWave').style.display = 'none';
         document.getElementById('hrvFinger').style.display = 'none';
 
-        const rawHrv = leftSensorData.hrv;
+        const rawHrv = getDemoDisplayHrvMs(leftSensorData.hrv);
         const { hrvMs, message, scoreText, invalid } = getReadinessDisplayFromHrvMs(rawHrv);
         preWorkoutHRV = hrvMs;
         startBtn.disabled = false;
@@ -412,8 +465,7 @@
 
   document.getElementById('startWarmupBtn').addEventListener('click', ()=>{ 
     currentWarmup = 0;
-    showScreen(5); 
-    updateWarmupScreen(currentWarmup);
+    showScreen(5);
 });
 
   const warmupExercises = [
@@ -427,7 +479,8 @@
 let currentWarmup = 0;
 /** Screen 5: egy „duration” lépés ennyi ms — 30→0 így 15 mp (lassabb demo tempó). */
 const WARMUP_COUNTDOWN_STEP_MS = (15 * 1000) / 30;
-/** Screen 5: countdown csak akkor indul, ha a bal roll < 30 (és jött bal BLE minta). */
+/** Screen 5: countdown csak akkor indul, ha a bal roll < 30 (bal BLE minta, bal párosítva). */
+const WARMUP_ROLL_START_MAX = 30;
 let warmupWaitingForRoll = false;
 const remainingDiv = document.getElementById('remainingExercises');
 
@@ -443,8 +496,8 @@ function markAllWarmupTilesCompleted() {
 /** Demo: az első gyakorlat (Arm Circles) után minden tile zöld, majd warm-up complete. */
 function finishWarmupDemoAfterFirstExercise() {
   warmupWaitingForRoll = false;
-  document.getElementById('waitingMotion').style.display = 'none';
-  document.getElementById('exerciseCountdown').style.display = 'none';
+  document.querySelector('#screen5 #waitingMotion').style.display = 'none';
+  document.querySelector('#screen5 #exerciseCountdown').style.display = 'none';
   markAllWarmupTilesCompleted();
   const n = warmupExercises.length;
   document.getElementById('warmupProgressBar').style.width = '100%';
@@ -455,13 +508,14 @@ function finishWarmupDemoAfterFirstExercise() {
 
 function startWarmupExerciseCountdown(exIndex) {
   const ex = warmupExercises[exIndex];
-  document.getElementById('waitingMotion').style.display = 'none';
-  document.getElementById('exerciseCountdown').style.display = 'block';
-  document.getElementById('exerciseCountdown').innerText = String(ex.duration);
+  document.querySelector('#screen5 #waitingMotion').style.display = 'none';
+  const countdownEl = document.querySelector('#screen5 #exerciseCountdown');
+  countdownEl.style.display = 'block';
+  countdownEl.innerText = String(ex.duration);
   let count = ex.duration;
   const interval = setInterval(() => {
     count--;
-    document.getElementById('exerciseCountdown').innerText = String(count);
+    countdownEl.innerText = String(count);
     if (count <= 0) {
       clearInterval(interval);
       if (exIndex === 0) {
@@ -479,9 +533,9 @@ function startWarmupExerciseCountdown(exIndex) {
 }
 
 function tryBeginWarmupFromRoll() {
-  if (currentScreen !== 5 || !warmupWaitingForRoll) return;
+  if (currentScreen !== 5 || !warmupWaitingForRoll || !leftConnected) return;
   const r = leftSensorData.roll;
-  if (!Number.isFinite(r) || r >= 30) return;
+  if (!Number.isFinite(r) || r >= WARMUP_ROLL_START_MAX) return;
   warmupWaitingForRoll = false;
   startWarmupExerciseCountdown(currentWarmup);
 }
@@ -498,9 +552,8 @@ warmupExercises.forEach((ex,i)=>{
 // update screen for current exercise
 function updateWarmupScreen(exIndex){
   const ex = warmupExercises[exIndex];
-  document.getElementById('exerciseName').innerText = ex.name;
-  document.getElementById('exerciseInstruction').innerText = ex.instruction;
-  document.getElementById('exerciseAnimation').innerText = "Animation placeholder: how to do it";
+  document.querySelector('#screen5 #exerciseName').innerText = ex.name;
+  document.querySelector('#screen5 #exerciseInstruction').innerText = ex.instruction;
 
   const percent = Math.round((exIndex)/warmupExercises.length*100);
   document.getElementById('warmupProgressBar').style.width = percent+'%';
@@ -514,8 +567,8 @@ function updateWarmupScreen(exIndex){
   });
 
   warmupWaitingForRoll = true;
-  document.getElementById('waitingMotion').style.display='block';
-  document.getElementById('exerciseCountdown').style.display='none';
+  document.querySelector('#screen5 #waitingMotion').style.display='block';
+  document.querySelector('#screen5 #exerciseCountdown').style.display='none';
 
   tryBeginWarmupFromRoll();
 }
@@ -599,13 +652,18 @@ function renderWorkoutOverview(activity){
 
 
 //screen 8
-// Screen 7 → Screen 8: Start Workout
-document.getElementById('startWorkoutOverviewBtn').addEventListener('click', () => {
+function goToExerciseInfoScreen() {
   currentExerciseIndex = 0;
   currentSetIndex = 0;
   showScreen(8);
   renderExerciseInfo();
-});
+}
+
+// Screen 7 → Screen 8: Start Workout
+document.getElementById('startWorkoutOverviewBtn').addEventListener('click', goToExerciseInfoScreen);
+
+// Screen 3 demo shortcut: skip HRV + warm-up → exercise info
+document.getElementById('skipToWorkoutDemoBtn').addEventListener('click', goToExerciseInfoScreen);
 
 let currentExerciseIndex = 0;
 let currentSetIndex = 0;
@@ -1127,6 +1185,9 @@ document.getElementById('startPostHRVBtn').addEventListener('click', () => {
   if (postHrvMeasureCountdownTimer) clearInterval(postHrvMeasureCountdownTimer);
   if (postHrvMeasureBpmTimer) clearInterval(postHrvMeasureBpmTimer);
 
+  postHrvMeasureStartedAt = Date.now();
+  postHrvMeasureDemoBpm = null;
+
   startBtn.disabled = true;
 
   fingerEl.style.display = 'block';
@@ -1156,7 +1217,7 @@ document.getElementById('startPostHRVBtn').addEventListener('click', () => {
       waveEl.style.display = 'none';
       fingerEl.style.display = 'none';
 
-      const rawHrv = leftSensorData.hrv;
+      const rawHrv = getDemoDisplayHrvMs(leftSensorData.hrv);
       const { hrvMs, message, scoreText, invalid } = getRecoveryDisplayFromHrvMs(rawHrv);
       if (!invalid) postWorkoutHRV = hrvMs;
 

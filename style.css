@@ -137,6 +137,19 @@
     justify-content: space-between;
   }
 
+  #skipToWorkoutDemoBtn {
+    width: 100%;
+    margin-top: auto;
+    background: #000;
+    color: #fff;
+    font-weight: bold;
+    padding: 14px;
+  }
+
+  #skipToWorkoutDemoBtn:hover {
+    background: #333;
+  }
+
   .activity-btn.selected {
     background-color: #999;
     color: #fff;
